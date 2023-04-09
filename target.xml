@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mujoco>
+    <option timestep="0.01" viscosity="0.001" />
+    <worldbody>
+        <body name="floor" pos="0 0 0">
+            <geom type="plane" name="floor" size="5 5 0.1" rgba="0.02 0.02 0.05 1" friction="0.01 0.001 0.0001"/>
+        </body>
+        <body name="robot" pos="0 0.0 0.05">
+            <geom type="cylinder" size="0.05 0.05" rgba="0.8 0.2 0.8 1"/>
+            <joint type="slide" name="x" pos="0 0 0" axis="1 0 0" damping="1" />
+            <joint type="slide" name="y" pos="0 0 0" axis="0 1 0" damping="1" />
+        </body>
+        <body name="object" pos="0.3 0 0.05">
+            <geom type="cylinder" size="0.08 0.05" rgba="0.2 0.8 0.8 1" friction="0.01 0.001 0.0001"/>
+            <joint type="free" name="object_free" damping="0.01"/>
+        </body>
+    </worldbody>
+    <actuator>
+        <velocity name="x" joint="x" kv="100"/>
+        <velocity name="y" joint="y" kv="100"/>
+    </actuator>
+</mujoco>
