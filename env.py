@@ -13,6 +13,7 @@ from scipy.spatial.transform import Rotation
 from trimesh.creation import box, cylinder
 
 SIM_STEPS_PER_CONTROL_STEP = 50
+SIM_STEPS_PER_VIZ = 10
 
 
 def name(*names):
@@ -89,17 +90,18 @@ class Env:
         self.data = mujoco.MjData(self.model)
 
     def step(self, action: Optional[np.ndarray]):
-        if action is not None:
-            np.copyto(self.data.ctrl, action)
-        for _ in range(SIM_STEPS_PER_CONTROL_STEP):
-            mujoco.mj_step(self.model, self.data)
-            self.viz()
-
-    def viz(self):
         # 2d plots
         rr.log_scalar("curves/robot_x_vel", self.data.qvel[0], label="robot x vel")
         rr.log_scalar("curves/robot_y_vel", self.data.qvel[1], label="robot y vel")
 
+        if action is not None:
+            np.copyto(self.data.ctrl, action)
+        for sim_step_i in range(SIM_STEPS_PER_CONTROL_STEP):
+            mujoco.mj_step(self.model, self.data)
+            if sim_step_i % SIM_STEPS_PER_VIZ == 0:
+                self.viz()
+
+    def viz(self):
         # 3d geometry
         for body_idx in range(self.model.nbody):
             body = self.model.body(body_idx)
@@ -180,6 +182,7 @@ def main():
 
         print(f'episode took {time.time() - episode_t0:.2f}s')
 
+    return
     with open('dataset.pkl', 'wb') as f:
         pickle.dump(dataset, f)
 

@@ -10,7 +10,7 @@
             <joint type="slide" name="x" pos="0 0 0" axis="1 0 0" damping="1" />
             <joint type="slide" name="y" pos="0 0 0" axis="0 1 0" damping="1" />
         </body>
-        <body name="object" pos="0.3 0 0.05">
+        <body name="object" pos="0.13 0 0.05">
             <geom type="cylinder" size="0.08 0.05" rgba="0.2 0.8 0.8 1" friction="0.01 0.001 0.0001"/>
             <joint type="free" name="object_free" damping="0.01"/>
         </body>
