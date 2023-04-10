@@ -7,10 +7,11 @@ from typing import Optional
 import mujoco
 import numpy as np
 import rerun as rr
-import wandb
 from mujoco._structs import _MjModelGeomViews, _MjDataGeomViews
 from scipy.spatial.transform import Rotation
 from trimesh.creation import box, cylinder
+
+import wandb
 
 SIM_STEPS_PER_CONTROL_STEP = 50
 SIM_STEPS_PER_VIZ = 10
@@ -42,8 +43,9 @@ def rr_mesh_cylinder(body_name, model: _MjModelGeomViews, data: _MjDataGeomViews
     transform = get_trasnform(data)
     mesh = cylinder(radius=model.size[0], height=2 * model.size[1], transform=transform, sections=16)
 
+    segment_indices = mesh.edges_unique.flatten()
     rr.log_line_segments(entity_path=name(body_name, model.name, 'outline'),
-                         positions=mesh.vertices[mesh.edges_unique.flatten()],
+                         positions=mesh.vertices[segment_indices],
                          color=(0, 0, 0))
     rr.log_mesh(entity_path=name(body_name, model.name),
                 positions=mesh.vertices,
@@ -135,7 +137,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('model_xml_filename', type=str)
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--n-transitions', type=int, default=1000)
+    parser.add_argument('--n-transitions', type=int, default=100)
 
     args = parser.parse_args()
 
@@ -159,11 +161,18 @@ def main():
         nominal_x_vel = rng.uniform(0.02, 0.1)
         nominal_y_vel = rng.normal(0, 0.02)
 
+        episode = []
+
         for _ in range(10):
             action = np.array([nominal_x_vel, nominal_y_vel]) + rng.normal(0, 0.005, size=(2,))
 
             env.step(action)
             after = env.get_state()
+
+            rr.log_scalar('state/obj_x', before['object_pos'][0], label='obj x')
+            rr.log_scalar('state/obj_y', before['object_pos'][1], label='obj y')
+            rr.log_scalar('state/robot_x', before['robot_pos'][0], label='robot x')
+            rr.log_scalar('state/robot_y', before['robot_pos'][1], label='robot y')
 
             transition = {
                 'before': before,
@@ -171,18 +180,14 @@ def main():
                 'after': after,
             }
 
-            rr.log_scalar('state/obj_x', before['object_pos'][0], label='obj x')
-            rr.log_scalar('state/obj_y', before['object_pos'][1], label='obj y')
-            rr.log_scalar('state/robot_x', before['robot_pos'][0], label='robot x')
-            rr.log_scalar('state/robot_y', before['robot_pos'][1], label='robot y')
-
-            dataset.append(transition)
+            episode.append(transition)
 
             before = after
 
+        dataset.append(episode)
+
         print(f'episode took {time.time() - episode_t0:.2f}s')
 
-    return
     with open('dataset.pkl', 'wb') as f:
         pickle.dump(dataset, f)
 
