@@ -1,2 +1,5 @@
+artifacts
+__pycache__
+pushing_focus
 venv
 wandb

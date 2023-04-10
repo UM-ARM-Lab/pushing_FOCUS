@@ -32,10 +32,10 @@ pip install -r requirements.txt
 
 ```bash
 # Collect the source dataset.
-./env.py source.xml
+./collect_data.py source.xml
 
 # Collect the target dataset.
-./env.py target.xml
+./collect_data.py target.xml
 
 # Train the source dynamics model.
 ./train_source.py
