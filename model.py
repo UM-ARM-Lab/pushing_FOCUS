@@ -63,7 +63,7 @@ class DynamicsNetwork(pl.LightningModule):
         log_dict["loss"] = loss
         return log_dict
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx=None):
         inputs, targets, uuids = batch
         outputs = self.forward(inputs)
         log_dict = self.compute_errors(outputs, targets)
@@ -77,7 +77,7 @@ class DynamicsNetwork(pl.LightningModule):
 
         return log_dict['loss']
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+    def validation_step(self, batch, batch_idx=None, dataloader_idx=0):
         inputs, targets, uuids = batch
 
         outputs = self.forward(inputs)

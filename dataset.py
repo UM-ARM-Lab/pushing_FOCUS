@@ -9,9 +9,9 @@ import wandb
 
 
 class DynamicsDataset(Dataset):
-    def __init__(self, dataset_name: str):
+    def __init__(self, dataset_name: str, version: str = 'latest'):
         self.name = dataset_name
-        self.artifact = wandb.Api().artifact(f'armlab/pushing_focus/{dataset_name}:latest', type='dataset')
+        self.artifact = wandb.Api().artifact(f'armlab/pushing_focus/{dataset_name}:{version}', type='dataset')
         self.dataset_file = Path(self.artifact.download()) / 'dataset.pkl'
         with self.dataset_file.open('rb') as f:
             self.dataset = pickle.load(f)
