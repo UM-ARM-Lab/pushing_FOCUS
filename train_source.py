@@ -1,7 +1,6 @@
 """
 This script trains a simple 2-layer MLP on the source dynamics dataset
 """
-import argparse
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
@@ -13,10 +12,6 @@ from model import DynamicsNetwork
 
 
 def main():
-    parser = argparse.ArgumentParser()
-
-    args = parser.parse_args()
-
     # Load the dataset
     dataset = DynamicsDataset('source-dataset')
 
@@ -34,7 +29,6 @@ def main():
     wandb.config.update({
         'is_adapt': False,
     })
-    wandb_logger.watch(model)
     trainer = pl.Trainer(max_epochs=100, logger=wandb_logger, check_val_every_n_epoch=5, log_every_n_steps=2)
     trainer.fit(model, train_loader, val_loader)
 

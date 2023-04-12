@@ -31,20 +31,25 @@ pip install -r requirements.txt
 ## Steps to Reproduce
 
 ```bash
-# Collect the source dataset.
-./collect_data.py source.xml
-
-# Collect the target dataset.
-./collect_data.py target.xml
+# Collect the datasets
+./collect_source.py
+./collect_target.py
+./collect_similar.py
+./collect_dissimilar.py
 
 # Train the source dynamics model.
 ./train_source.py
 
-# Run a baseline adaptation method
-./adapt.py all_data
+# visualize predictions
+./viz_predictions.py source-dataset # or target-dataset, similar-dataset, dissimilar-dataset
 
-# Run FOCUS
+# Run adaptation methodS
+./adapt.py all_data
 ./adapt.py FOCUS
+
+# evaluate on the similar and dissimilar datasets
+./evaluate.py adapted_FOCUS_model
+./evaluate.py adapted_all_data_model
 
 # Compare the methods in [Weights & Biases](https://wandb.ai/).
 ```

@@ -16,11 +16,12 @@ from model import DynamicsNetwork
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('dataset_name')
 
     args = parser.parse_args()
 
     # Load the dataset
-    dataset = DynamicsDataset('source-dataset')
+    dataset = DynamicsDataset(args.dataset_name)
 
     # Load the network
     api = wandb.Api()
@@ -32,7 +33,7 @@ def main():
     rrr.init()
 
     # run the network on each example in the dataset
-    for example_idx, (inputs, outputs) in enumerate(dataset):
+    for example_idx, (inputs, outputs, _) in enumerate(dataset):
         rr.set_time_sequence('examples', example_idx)
 
         predictions = model(inputs[None])[0]
