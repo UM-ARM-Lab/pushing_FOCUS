@@ -35,13 +35,8 @@ def main():
     model = DynamicsNetwork.load_from_checkpoint(model_path / 'model.ckpt',
                                                  lr=1e-4,
                                                  method=method,
-                                                 train_dataloaders=train_loader,
-                                                 val_dataloaders=[
-                                                     similar_loader,
-                                                     dissimilar_loader,
-                                                 ],
-                                                 gamma=1e-4,
-                                                 global_k=500)
+                                                 gamma=1e-3,
+                                                 global_k=10000)
 
     n_steps = 100
     similar_errors = []
@@ -58,32 +53,33 @@ def main():
         for batch in train_loader:
             inputs, targets, train_uuids = batch
             outputs = model.forward(inputs)
-            log_dict = model.compute_errors(outputs, targets)
+            log_dict = model.compute_errors(outputs, targets, global_step)
             train_errors.append(log_dict['error'])
             if method == 'FOCUS':
                 train_weights.append(log_dict['weights'])
         for batch in similar_loader:
             inputs, targets, similar_uuids = batch
             outputs = model.forward(inputs)
-            log_dict = model.compute_errors(outputs, targets)
+            log_dict = model.compute_errors(outputs, targets, global_step)
             similar_errors.append(log_dict['error'])
             if method == 'FOCUS':
                 similar_weights.append(log_dict['weights'])
         for batch in dissimilar_loader:
             inputs, targets, dissimilar_uuids = batch
             outputs = model.forward(inputs)
-            log_dict = model.compute_errors(outputs, targets)
+            log_dict = model.compute_errors(outputs, targets, global_step)
             dissimilar_errors.append(log_dict['error'])
             if method == 'FOCUS':
                 dissimilar_weights.append(log_dict['weights'])
 
         # now run an update of gradient descent on the model
         # for each example in the training set (mixed data from target env)
-        model.zero_grad()
+        # NOTE: we're using full-batches not mini-batches
         for batch in train_loader:
+            model.zero_grad()
             inputs, targets, _ = batch
             outputs = model.forward(inputs)
-            log_dict = model.compute_errors(outputs, targets)
+            log_dict = model.compute_errors(outputs, targets, global_step)
             loss = log_dict["loss"]
             loss.backward()
             opt.step()
@@ -91,14 +87,14 @@ def main():
     fig, ax = plt.subplots()
     ax2 = ax.twinx()
 
-    min_error = 1e-6
+    min_error = 1e-5
     max_error = 0.1
     error_bins = np.geomspace(min_error, max_error, 50)
     more_error_bins = np.geomspace(min_error, max_error, 500)
     ax.axvline(model.gamma, label='gamma', color='k', linestyle='--')
-    _, _, train_bars = ax.hist([], error_bins, color='b', label='all target data', alpha=0.8)
-    _, _, similar_bars = ax.hist([], error_bins, color='g', label='similar', alpha=0.8)
-    _, _, dissimilar_bars = ax.hist([], error_bins, color='r', label='dissimilar', alpha=0.8)
+    _, _, train_bars = ax.hist([], error_bins, color='b', label='all target data', alpha=1)
+    _, _, similar_bars = ax.hist([], error_bins, color='g', label='similar', alpha=0.2)
+    _, _, dissimilar_bars = ax.hist([], error_bins, color='r', label='dissimilar', alpha=0.2)
     text = ax.text(1e-2, 15, "")
 
     ax.set_xlim(min_error, max_error)
@@ -130,35 +126,8 @@ def main():
             weights = 1 - sigmoid(model.global_k * global_step * (more_error_bins - model.gamma))
             wline.set_ydata(weights)
 
-    annot = ax.annotate("", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
-                        bbox=dict(boxstyle="round", fc="w"),
-                        arrowprops=dict(arrowstyle="->"))
-    annot.set_visible(False)
-
-    def update_annot(event, uuid):
-        annot.xy = (event.x, event.y)
-        annot.set_text(f'{uuid}')
-        annot.get_bbox_patch().set_alpha(0.4)
-
-    def hover(event):
-        vis = annot.get_visible()
-        for bar_i, bar in enumerate(dissimilar_bars.patches):
-            cont, ind = bar.contains(event)
-            if cont:
-                update_annot(event, dissimilar_uuids[bar_i])
-                annot.set_visible(True)
-                fig.canvas.draw_idle()
-            else:
-                if vis:
-                    annot.set_visible(False)
-                    fig.canvas.draw_idle()
-
-    fig.canvas.mpl_connect("motion_notify_event", hover)
-
-    func(0)
-    plt.show(block=True)
-
     anim = FuncAnimation(fig, func, frames=n_steps, interval=1)
+    plt.show(block=True)
     anim.save('adaptation.mp4', writer='imagemagick', dpi=100)
 
 

@@ -19,9 +19,10 @@ def main():
     train_set, val_set = random_split(dataset, [int(0.8 * len(dataset)), int(0.2 * len(dataset))])
     train_loader = DataLoader(train_set, batch_size=16)
     val_loader = DataLoader(val_set, batch_size=16)
+    val_loader.dataset.name = 'val'
 
     # Train the network
-    model = DynamicsNetwork(method='all_data')
+    model = DynamicsNetwork(method='all_data', train_dataloaders=train_loader, val_dataloaders=[val_loader])
 
     # train the model
     wandb.init(entity='armlab')
