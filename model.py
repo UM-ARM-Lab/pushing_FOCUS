@@ -43,25 +43,32 @@ class DynamicsNetwork(pl.LightningModule):
     def compute_errors(self, outputs, targets, global_step=-1):
         error = (outputs - targets).square().sum(-1)
         log_dict = {"error": error.detach().cpu().numpy()}
-        match self.method:
-            case 'FOCUS2':
-                weight = 1 - torch.sigmoid(self.global_k * global_step * (error - torch.quantile(error, 0.25)))
-                weighted_error = error * weight
-                log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
-            case 'FOCUS':
-                weight = 1 - torch.sigmoid(self.global_k * global_step * (error - self.gamma))
-                weighted_error = error * weight
-                log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
-            case 'initial_low_error':
-                weighted_error = error * self.initial_weight
-            case 'all_data':
-                weighted_error = error
-            case _:
-                raise NotImplementedError(f"Unknown {self.method=}")
+        weight = self.compute_weight(error, global_step, log_dict)
+        weighted_error = error * weight
 
         loss = weighted_error.mean()
         log_dict["loss"] = loss
         return log_dict
+
+    def compute_weight(self, error, global_step, log_dict):
+        with torch.no_grad():  # don't accidentally do metalearning...
+            match self.method:
+                case 'FOCUS2':
+                    weight = 1 - torch.sigmoid(self.global_k * global_step * (error - torch.quantile(error, 0.25)))
+                    weighted_error = error * weight
+                    log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
+                case 'FOCUS':
+                    weight = 1 - torch.sigmoid(self.global_k * global_step * (error - self.gamma))
+                    weighted_error = error * weight
+                    log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
+                case 'CL':  # standard curriculum learning
+                    weight = 1 - torch.sigmoid(self.global_k * error - self.gamma)
+                    log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
+                case 'all_data':
+                    weight = torch.ones_like(error)
+                case _:
+                    raise NotImplementedError(f"Unknown {self.method=}")
+        return weight
 
     def training_step(self, batch, batch_idx=None, global_step=-1):
         inputs, targets, uuids = batch
