@@ -43,7 +43,7 @@ pip install -r requirements.txt
 # visualize predictions
 ./viz_predictions.py source-dataset # or target-dataset, similar-dataset, dissimilar-dataset
 
-# Run adaptation methodS
+# Run adaptation methods
 ./adapt.py all_data
 ./adapt.py FOCUS
 
