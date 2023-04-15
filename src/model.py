@@ -6,14 +6,14 @@ from typing import Optional
 
 import pytorch_lightning as pl
 import torch
+import wandb
 from torch import nn
 from torch.optim import Adam
 
-import wandb
-
 
 class DynamicsNetwork(pl.LightningModule):
-    def __init__(self, method: Optional[str] = None, input_dim=80, output_dim=30, lr=1e-3, train_dataloaders=None,
+    def __init__(self, method: Optional[str] = None, context_dim=24, action_dim=16, output_dim=24, lr=1e-3,
+                 train_dataloaders=None,
                  val_dataloaders=None, gamma=0.001, global_k=10):
         super().__init__()
         assert global_k > 0
@@ -23,12 +23,23 @@ class DynamicsNetwork(pl.LightningModule):
         self.gamma = gamma
         self.global_k = global_k
         self.method = method
-        self.mlp = nn.Sequential(
-            nn.Linear(input_dim, 512),
+        self.context_mlp = nn.Sequential(
+            nn.Linear(context_dim, 256),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(256, 256),
+            nn.ReLU()
+        )
+        self.actions_mlp = nn.Sequential(
+            nn.Linear(action_dim, 256),
             nn.ReLU(),
-            nn.Linear(512, output_dim))
+        )
+        self.predictor_mlp = nn.Sequential(
+            nn.Linear(256 + 256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_dim),
+        )
 
     def train_dataloader(self):
         return self.train_dataloaders
@@ -36,8 +47,10 @@ class DynamicsNetwork(pl.LightningModule):
     def val_dataloader(self):
         return self.val_dataloaders
 
-    def forward(self, inputs):
-        outputs = self.mlp(inputs)
+    def forward(self, context, actions):
+        context_z = self.context_mlp(context)
+        actions_z = self.actions_mlp(actions)
+        outputs = self.predictor_mlp(torch.cat((context_z, actions_z), dim=-1))
         return outputs
 
     def compute_errors(self, outputs, targets, global_step=-1):
@@ -55,11 +68,9 @@ class DynamicsNetwork(pl.LightningModule):
             match self.method:
                 case 'FOCUS2':
                     weight = 1 - torch.sigmoid(self.global_k * global_step * (error - torch.quantile(error, 0.25)))
-                    weighted_error = error * weight
                     log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
                 case 'FOCUS':
                     weight = 1 - torch.sigmoid(self.global_k * global_step * (error - self.gamma))
-                    weighted_error = error * weight
                     log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
                 case 'CL':  # standard curriculum learning
                     weight = 1 - torch.sigmoid(self.global_k * error - self.gamma)
@@ -70,33 +81,33 @@ class DynamicsNetwork(pl.LightningModule):
                     raise NotImplementedError(f"Unknown {self.method=}")
         return weight
 
-    def training_step(self, batch, batch_idx=None, global_step=-1):
-        inputs, targets, uuids = batch
-        outputs = self.forward(inputs)
-        log_dict = self.compute_errors(outputs, targets, global_step)
+    def training_step(self, batch, batch_idx=None):
+        context, actions, targets, _, uuids = batch
+        outputs = self.forward(context, actions)
+        log_dict = self.compute_errors(outputs, targets, self.global_step)
         log_dict["uuids"] = uuids
 
         train_log_dict = {f"train_{k}": v for k, v in log_dict.items()}
-        train_log_dict["global_step"] = global_step
+        train_log_dict["global_step"] = self.global_step
 
-        if global_step % 5 == 0:
+        if self.global_step % 5 == 0:
             wandb.log(train_log_dict)
 
         return log_dict['loss']
 
-    def validation_step(self, batch, batch_idx=None, dataloader_idx=0, global_step=-1):
-        inputs, targets, uuids = batch
+    def validation_step(self, batch, batch_idx=None, dataloader_idx=0):
+        context, actions, targets, _, uuids = batch
 
-        outputs = self.forward(inputs)
+        outputs = self.forward(context, actions)
 
-        log_dict = self.compute_errors(outputs, targets, global_step)
+        log_dict = self.compute_errors(outputs, targets, self.global_step)
         log_dict["uuids"] = uuids
 
         val_dataset_name = self.val_dataloaders[dataloader_idx].dataset.name
         val_log_dict = {f"{val_dataset_name}_{k}": v for k, v in log_dict.items()}
-        val_log_dict["global_step"] = global_step
+        val_log_dict["global_step"] = self.global_step
 
-        if global_step % 5 == 0:
+        if self.global_step % 5 == 0:
             wandb.log(val_log_dict)
 
         return log_dict['loss']

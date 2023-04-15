@@ -3,9 +3,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import wandb
 from torch.utils.data import Dataset
 
-import wandb
+H = 3
 
 
 class DynamicsDataset(Dataset):
@@ -20,16 +21,50 @@ class DynamicsDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        """
+        Returns a tuple of (context, actions, target_obj_positions, uuid).
+        context: (H*8) flattened
+            Robot position, and object position, and action for H time steps before prediction starts.
+        actions: (T*2) flattened
+            Action for T time steps after prediction starts.
+        target_obj_positions: (T*3) flattened
+            Object position for T time steps after prediction starts.
+        uuid: string
+            Unique identifier for the trajectory.
+        """
         trajectory = self.dataset[idx]
-        before_robot_pos = torch.tensor(np.array([b['before']['robot_pos'] for b in trajectory]))
-        before_object_pos = torch.tensor(np.array([b['before']['object_pos'] for b in trajectory]))
-        action = torch.tensor(np.array([b['action'] for b in trajectory]))
-        after_robot_pos = torch.tensor(np.array([b['after']['robot_pos'] for b in trajectory]))
-        after_object_pos = torch.tensor(np.array([b['after']['object_pos'] for b in trajectory]))
-        inputs = torch.cat([before_robot_pos, before_object_pos, action], -1).reshape(-1).float()
-        targets = torch.cat([after_object_pos], -1).reshape(-1).float()
+
+        context = []
+        for t in range(H):
+            context_transition_t = trajectory[t]
+            context_before_t = context_transition_t['before']
+            context_action_t = context_transition_t['action']
+            context_robot_pos_t = context_before_t['robot_pos']
+            context_object_pos_t = context_before_t['object_pos']
+            context.append(np.concatenate([context_robot_pos_t, context_object_pos_t, context_action_t]))
+        context = torch.flatten(torch.tensor(np.array(context)))
+
+        actions = []
+        for t in range(H - 1, len(trajectory)):
+            transition_t = trajectory[t]
+            action_t = transition_t['action']
+            actions.append(action_t)
+        actions = torch.flatten(torch.tensor(np.array(actions)))
+
+        target_obj_positions = []
+        target_robot_positions = []
+        for t in range(H - 1, len(trajectory)):
+            transition_t = trajectory[t]
+            target_obj_t = transition_t['after']['object_pos']
+            target_obj_positions.append(target_obj_t)
+            target_robot_t = transition_t['after']['robot_pos']
+            target_robot_positions.append(target_robot_t)
+        target_obj_positions = np.array(target_obj_positions)
+        target_obj_positions = torch.flatten(torch.tensor(target_obj_positions))
+        target_robot_positions = torch.flatten(torch.tensor(np.array(target_robot_positions)))
+
         uuid = trajectory[0]['uuid']
-        return inputs, targets, uuid
+        return context.float(), actions.float(), target_obj_positions.float(), target_robot_positions.float(), uuid
 
 
 def save(dataset, env_name, seed):

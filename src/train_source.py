@@ -25,7 +25,7 @@ def main():
     model = DynamicsNetwork(method='all_data', train_dataloaders=train_loader, val_dataloaders=[val_loader])
 
     # train the model
-    wandb.init(entity='armlab')
+    wandb.init(entity='armlab', project='pushing_focus')
     wandb_logger = WandbLogger(project="pushing_focus", log_model="all", checkpoint_name="source_model")
     wandb.config.update({
         'is_adapt': False,

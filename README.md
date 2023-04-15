@@ -32,28 +32,28 @@ pip install -r requirements.txt
 
 ```bash
 # Collect the datasets
-./collect_source.py
-./collect_target.py
-./collect_similar.py
-./collect_dissimilar.py
+./src/collect_source.py
+./src/collect_target.py
+./src/collect_similar.py
+./src/collect_dissimilar.py
 
 # Train the source dynamics model.
-./train_source.py
+./src/train_source.py
 
 # visualize predictions
-./viz_predictions.py source-dataset # or target-dataset, similar-dataset, dissimilar-dataset
+./src/viz_predictions.py source-dataset # or target-dataset, similar-dataset, dissimilar-dataset
 
 # Run adaptation methods
-./adapt.py all_data
-./adapt.py FOCUS
+./src/adapt.py all_data
+./src/adapt.py FOCUS
 
-# evaluate on the similar and dissimilar datasets
-./evaluate.py adapted_FOCUS_model
-./evaluate.py adapted_all_data_model
+# [OPTIONAL] visualize the adaptation process on the target dataset,
+# and the similar and dissimilar datasets for FOCUS and two baselines.
+./src/animate_adapt.py
 
-# Compare the methods in [Weights & Biases](https://wandb.ai/).
+# Run a simple LQR controller to reach a position target in the source environment
+# using the source dynamics
+./src/source_lqr.py
 ```
 
 ## Results
-
-TODO: Link to wandb report here!

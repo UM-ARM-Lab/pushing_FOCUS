@@ -64,7 +64,6 @@ def main():
     # CL
     method = 'CL'
     model = get_model(method)
-    print(f'training {method}...')
     model, train_errors, similar_errors, dissimilar_errors = generate_data(model, n_steps)
     # only train data
     animate(f'{method}_train.mp4',
@@ -87,17 +86,17 @@ def main():
 def animate(filename, model, train_errors, similar_errors, dissimilar_errors, n_steps, show_weighting_function=True):
     fig, ax = plt.subplots(figsize=(5, 4), layout='constrained')
     ax2 = ax.twinx()
-    min_error = 2e-5
-    max_error = 0.1
+    min_error = 1e-4
+    max_error = 0.5
     error_bins = np.geomspace(min_error, max_error, 50)
     more_error_bins = np.geomspace(min_error, max_error, 500)
     ax.axvline(model.gamma, label=r'$\gamma$', color='k', linestyle='--', linewidth=2)
     if train_errors:
         _, _, train_bars = ax.hist([], error_bins, color='b', label='all target data')
-    if similar_errors:
-        _, _, similar_bars = ax.hist([], error_bins, color='g', label='similar')
     if dissimilar_errors:
         _, _, dissimilar_bars = ax.hist([], error_bins, color='r', label='dissimilar')
+    if similar_errors:
+        _, _, similar_bars = ax.hist([], error_bins, color='g', label='similar')
     text = ax.text(2e-2, 18, "")
     ax.set_xlim(min_error, max_error)
     ax.set_xscale('log')
@@ -119,13 +118,13 @@ def animate(filename, model, train_errors, similar_errors, dissimilar_errors, n_
             train_counts, _ = np.histogram(train_errors[global_step], error_bins)
             for count, rect in zip(train_counts, train_bars.patches):
                 rect.set_height(count)
-        if similar_errors:
-            similar_counts, _ = np.histogram(similar_errors[global_step], error_bins)
-            for count, rect in zip(similar_counts, similar_bars.patches):
-                rect.set_height(count)
         if dissimilar_errors:
             dissimilar_counts, _ = np.histogram(dissimilar_errors[global_step], error_bins)
             for count, rect in zip(dissimilar_counts, dissimilar_bars.patches):
+                rect.set_height(count)
+        if similar_errors:
+            similar_counts, _ = np.histogram(similar_errors[global_step], error_bins)
+            for count, rect in zip(similar_counts, similar_bars.patches):
                 rect.set_height(count)
         if show_weighting_function:
             if model.method == 'FOCUS':
@@ -136,6 +135,7 @@ def animate(filename, model, train_errors, similar_errors, dissimilar_errors, n_
 
     root = Path("animations")
     root.mkdir(exist_ok=True)
+    # plt.show(block=True)
     anim.save((root / filename).as_posix(), writer='ffmpeg', dpi=200)
     print(f'Saved {filename}')
 
@@ -148,54 +148,55 @@ def get_model(method):
     return DynamicsNetwork.load_from_checkpoint(model_path / 'model.ckpt',
                                                 lr=1e-5,
                                                 method=method,
-                                                gamma=3e-3,
+                                                gamma=7e-3,
                                                 global_k=100)
 
 
 def generate_data(model, n_steps):
+    print(f'training {model.method}...')
     dataset = DynamicsDataset('target-dataset')
-    similar_dataset = DynamicsDataset('similar-dataset')
     dissimilar_dataset = DynamicsDataset('dissimilar-dataset')
+    similar_dataset = DynamicsDataset('similar-dataset')
     train_loader = DataLoader(dataset, batch_size=999)
-    similar_loader = DataLoader(similar_dataset, batch_size=999)
     dissimilar_loader = DataLoader(dissimilar_dataset, batch_size=999)
-    similar_errors = []
+    similar_loader = DataLoader(similar_dataset, batch_size=999)
     dissimilar_errors = []
+    similar_errors = []
     train_errors = []
-    similar_weights = []
     dissimilar_weights = []
+    similar_weights = []
     train_weights = []
     opt = model.configure_optimizers()
     for global_step in range(n_steps):
         for batch in train_loader:
-            inputs, targets, train_uuids = batch
-            outputs = model.forward(inputs)
+            context, actions, targets, _, train_uuids = batch
+            outputs = model.forward(context, actions)
             log_dict = model.compute_errors(outputs, targets, global_step)
             train_errors.append(log_dict['error'])
             if model.method == 'FOCUS':
                 train_weights.append(log_dict['weights'])
-        for batch in similar_loader:
-            inputs, targets, similar_uuids = batch
-            outputs = model.forward(inputs)
-            log_dict = model.compute_errors(outputs, targets, global_step)
-            similar_errors.append(log_dict['error'])
-            if model.method == 'FOCUS':
-                similar_weights.append(log_dict['weights'])
         for batch in dissimilar_loader:
-            inputs, targets, dissimilar_uuids = batch
-            outputs = model.forward(inputs)
+            context, actions, targets, _, dissimilar_uuids = batch
+            outputs = model.forward(context, actions)
             log_dict = model.compute_errors(outputs, targets, global_step)
             dissimilar_errors.append(log_dict['error'])
             if model.method == 'FOCUS':
                 dissimilar_weights.append(log_dict['weights'])
+        for batch in similar_loader:
+            context, actions, targets, _, similar_uuids = batch
+            outputs = model.forward(context, actions)
+            log_dict = model.compute_errors(outputs, targets, global_step)
+            similar_errors.append(log_dict['error'])
+            if model.method == 'FOCUS':
+                similar_weights.append(log_dict['weights'])
 
         # now run an update of gradient descent on the model
         # for each example in the training set (mixed data from target env)
         # NOTE: we're using full-batches not mini-batches
         for batch in train_loader:
             model.zero_grad()
-            inputs, targets, _ = batch
-            outputs = model.forward(inputs)
+            context, actions, targets, _, _ = batch
+            outputs = model.forward(context, actions)
             log_dict = model.compute_errors(outputs, targets, global_step)
             loss = log_dict["loss"]
             loss.backward()
