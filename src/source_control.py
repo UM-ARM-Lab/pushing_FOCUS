@@ -1,16 +1,19 @@
-import copy
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Dict
 
 import numpy as np
 import rerun as rr
 import torch
 import wandb
 
-import dataset
 import rrr
 from env import Env
 from model import DynamicsNetwork
+from mujoco_mppi import MujocoMPPI, normalized
+
+T = 5
+
 
 
 def state_to_vec(state):
@@ -19,117 +22,20 @@ def state_to_vec(state):
                      state['object_pos'][2]])
 
 
-def predict(model, trajectory: List[Dict], actions: torch.tensor):
-    """
-    Predict the next state of the object given the current state and a sequence of actions
-
-    Args:
-        model: the dynamics model
-        trajectory: the current trajectory
-        actions: [b, T, 2] a sequence of actions to apply to the object
-
-    Returns:
-        [b, T, 3] the predicted next state of the object
-    """
-    context = dataset.get_context(trajectory).float()
-    context = torch.tile(context, [actions.shape[0], 1])
-    actions = torch.tensor(actions).float()
-    actions = torch.reshape(actions, [actions.shape[0], -1])
-    outputs = model(context, actions)
-    outputs = outputs.detach().numpy().reshape(actions.shape[0], -1, 3)
-
-    return outputs
-
-
-def predictive_sampling(model, x_goal: np.ndarray, trajectory: List[Dict], n_samples: int):
-    """
-    Predict the next state of the object given the current state and a sequence of actions.
-
-    Args:
-        model: the dynamics model
-        x_goal: the goal position of the object
-        trajectory: the current trajectory
-
-    Returns:
-        [2] the best action to take
-    """
-    # sample a bunch of action sequences and pick the one that gets closest to the goal
-    T = 8
-
-    rng = np.random.RandomState(0)
-    actions = rng.uniform(-0.1, 0.1, [n_samples, 1, 2])
-    noise = rng.uniform(-0.01, 0.01, [n_samples, T, 2])
-    actions = np.tile(actions, [1, T, 1]) + noise
-
-    outputs = predict(model, trajectory, actions)
-
-    best_action = get_best_action(actions, outputs, x_goal)
-
-    return best_action
-
-
-def mujoco_predict(model, data, action_sequences: np.array):
-    outputs = []
-    for action_sequence in action_sequences:
-        output_i = []
-        # it's important make a copy of the data for prediction, and reset for each action sequence
-        env = Env(model_xml_filename=None, model=model, data=copy.copy(data))
-        for action in action_sequence:
-            env.step(action, log=False)
-            output_i_t = env.get_state()
-            output_i.append(output_i_t['object_pos'])
-        outputs.append(output_i)
-    outputs = np.array(outputs)
-
-    return outputs
-
-
-def mujoco_predictive_sampling(model, data, x_goal: np.ndarray, n_samples: int):
-    # sample a bunch of action sequences and pick the one that gets closest to the goal
-    T = 8
-
-    rng = np.random.RandomState(0)
-    actions = rng.uniform(-0.1, 0.1, [n_samples, 1, 2])
-    noise = rng.uniform(-0.01, 0.01, [n_samples, T, 2])
-    actions = np.tile(actions, [1, T, 1]) + noise
-
-    outputs = mujoco_predict(model, data, actions)
-
-    best_action = get_best_action(actions, outputs, x_goal)
-
-    return best_action
-
-
-def get_best_action(actions, outputs, x_goal):
-    # visualize all the predictions
-    # for i, pred_obj_positions in enumerate(outputs):
-    #     rr.log_line_strip(f'object/pred', pred_obj_positions, color=(0, 0, 1.), stroke_width=0.01)
-    # compute the distance to the goal for each sample
-    final_states = outputs[:, -1, :]  # [n_samples, 3]
-    distances = np.linalg.norm(final_states - x_goal, axis=1)  # [n_samples]
-    action_cost = np.linalg.norm(actions, axis=1).sum(-1)
-    costs = distances + action_cost
-    best_idx = np.argmin(costs)
-    best_action = actions[best_idx, 0, :]
-    best_pred_obj_positions = outputs[best_idx]
-    rr.log_line_strip(f'object/pred', best_pred_obj_positions, color=(0, 255, 0), stroke_width=0.01)
-    return best_action
-
-
-def goal_satisfied(state, x_goal):
+def goal_satisfied(state, x_goal, threshold=0.1):
     """
     Check if the goal has been satisfied.
 
     Args:
         state: the current state of the environment
         x_goal: the goal position of the object
+        threshold: the distance threshold for the goal to be satisfied
 
     Returns:
         True if the goal has been satisfied, False otherwise
     """
     distance = np.linalg.norm(state_to_vec(state) - x_goal)
-    print(distance)
-    return distance < 0.1
+    return distance < threshold
 
 
 def main():
@@ -164,30 +70,43 @@ def main():
 
     x_goal = np.array([1.5, 0., 0.05])
 
-    rr.log_point('object/goal', x_goal, color=(255, 0, 255), radius=0.1)
+    goal_threshold = 0.05
+    rr.log_point('object/goal', x_goal, color=(255, 0, 255), radius=goal_threshold)
 
-    for t in range(50):
+    pool = ThreadPoolExecutor(multiprocessing.cpu_count() - 1)
+
+    mppi = MujocoMPPI(pool, env.model, num_samples=50, noise_sigma=0.02, horizon=T, lambda_=10, seed=0, gamma=0.9)
+    mppi.U = np.array([[0.01, 0.0]] * T)
+
+    def get_results(_, data):
+        state = env.get_state(data=data)
+        return state['object_pos'], state['robot_pos']
+
+    def cost(results, action_sequences):
+        object_sequences, robot_sequences = results
+        for object_sequence, robot_sequence in list(zip(object_sequences, robot_sequences))[::5]:
+            rr.log_line_strip(f'object/pred', object_sequence, color=(255, 0, 0), stroke_width=0.002)
+            rr.log_line_strip(f'robot/pred', robot_sequence, color=(0, 255, 0), stroke_width=0.002)
+        goal_cost = np.linalg.norm(object_sequences - x_goal, axis=-1)[:, 1:]
+        obj_robot_dist_cost = np.linalg.norm(object_sequences - robot_sequences, axis=-1)[:, 1:] - 0.1
+        return goal_cost + obj_robot_dist_cost * 5
+
+    # warmstart mppi
+    for t in range(20):
+        action = mppi._command(env.data, get_results, cost)
+
+    for t in range(75):
         state = env.get_state()
-        rrr.viz_state(state)
-
-        transition = {
-            'before': state,
-            'action': action,
-        }
-        trajectory.append(transition)
-
-        # FIXME: use the H stored in the dataset since it might change
-        # action = predictive_sampling(model, x_goal, trajectory[-dataset.H:], n_samples=100)
-        action = mujoco_predictive_sampling(env.model, env.data, x_goal, n_samples=100)
 
         env.step(action)
 
-        # remove the first element, so we don't keep states we don't need
-        trajectory.pop(0)
-
-        if goal_satisfied(state, x_goal):
+        if goal_satisfied(state, x_goal, goal_threshold):
             print(f'Goal reached in {t} steps')
             break
+
+        mppi.roll()
+        for t in range(10):
+            action = mppi._command(env.data, get_results, cost)
 
 
 if __name__ == '__main__':

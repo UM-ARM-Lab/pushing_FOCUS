@@ -58,8 +58,10 @@ class Env:
             case _:
                 raise NotImplementedError(f'{geom.type=} not implemented')
 
-    def get_state(self):
+    def get_state(self, data: Optional[mujoco.MjData] = None):
+        if data is None:
+            data = self.data
         return {
-            'robot_pos': copy(self.data.body('robot').xpos),
-            'object_pos': copy(self.data.body('object').xpos),
+            'robot_pos': copy(data.body('robot').xpos),
+            'object_pos': copy(data.body('object').xpos),
         }
