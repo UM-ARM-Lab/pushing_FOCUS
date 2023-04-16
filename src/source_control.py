@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 from typing import List, Dict
 
@@ -40,7 +41,7 @@ def predict(model, trajectory: List[Dict], actions: torch.tensor):
     return outputs
 
 
-def predictive_sampling(model, x_goal: np.ndarray, trajectory: List[Dict]):
+def predictive_sampling(model, x_goal: np.ndarray, trajectory: List[Dict], n_samples: int):
     """
     Predict the next state of the object given the current state and a sequence of actions.
 
@@ -53,7 +54,6 @@ def predictive_sampling(model, x_goal: np.ndarray, trajectory: List[Dict]):
         [2] the best action to take
     """
     # sample a bunch of action sequences and pick the one that gets closest to the goal
-    n_samples = 100
     T = 8
 
     rng = np.random.RandomState(0)
@@ -68,13 +68,24 @@ def predictive_sampling(model, x_goal: np.ndarray, trajectory: List[Dict]):
     return best_action
 
 
-def mujoco_predict(model, data, actions: np.array):
-    pass
+def mujoco_predict(model, data, action_sequences: np.array):
+    outputs = []
+    for action_sequence in action_sequences:
+        output_i = []
+        # it's important make a copy of the data for prediction, and reset for each action sequence
+        env = Env(model_xml_filename=None, model=model, data=copy.copy(data))
+        for action in action_sequence:
+            env.step(action, log=False)
+            output_i_t = env.get_state()
+            output_i.append(output_i_t['object_pos'])
+        outputs.append(output_i)
+    outputs = np.array(outputs)
+
+    return outputs
 
 
-def mujoco_predictive_sampling(model, data, x_goal: np.ndarray):
+def mujoco_predictive_sampling(model, data, x_goal: np.ndarray, n_samples: int):
     # sample a bunch of action sequences and pick the one that gets closest to the goal
-    n_samples = 100
     T = 8
 
     rng = np.random.RandomState(0)
@@ -155,7 +166,7 @@ def main():
 
     rr.log_point('object/goal', x_goal, color=(255, 0, 255), radius=0.1)
 
-    for t in range(30):
+    for t in range(50):
         state = env.get_state()
         rrr.viz_state(state)
 
@@ -166,8 +177,8 @@ def main():
         trajectory.append(transition)
 
         # FIXME: use the H stored in the dataset since it might change
-        # action = predictive_sampling(model, x_goal, trajectory[-dataset.H:])
-        action = mujoco_predictive_sampling(env.model, env.data, x_goal)
+        # action = predictive_sampling(model, x_goal, trajectory[-dataset.H:], n_samples=100)
+        action = mujoco_predictive_sampling(env.model, env.data, x_goal, n_samples=100)
 
         env.step(action)
 

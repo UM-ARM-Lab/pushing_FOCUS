@@ -1,15 +1,10 @@
-import argparse
-import pickle
-import time
 from copy import copy
-from pathlib import Path
 from typing import Optional
 
 import mujoco
 import numpy as np
-
-import wandb
 import rerun as rr
+
 import rrr
 
 SIM_STEPS_PER_CONTROL_STEP = 50
@@ -18,21 +13,29 @@ SIM_STEPS_PER_VIZ = 10
 
 class Env:
 
-    def __init__(self, model_xml_filename):
-        self.model = mujoco.MjModel.from_xml_path(model_xml_filename)
-        self.data = mujoco.MjData(self.model)
+    def __init__(self, model_xml_filename: Optional[str], model: Optional = None, data: Optional = None):
+        if model is not None:
+            if data is None:
+                raise ValueError('data must be provided if model is provided')
+            self.model = model
+            self.data = data
+        else:
+            self.model = mujoco.MjModel.from_xml_path(model_xml_filename)
+            self.data = mujoco.MjData(self.model)
 
-    def step(self, action: Optional[np.ndarray]):
+    def step(self, action: Optional[np.ndarray], log=True):
         # 2d plots
-        rr.log_scalar("curves/robot_x_vel", self.data.qvel[0], label="robot x vel")
-        rr.log_scalar("curves/robot_y_vel", self.data.qvel[1], label="robot y vel")
+        if log:
+            rr.log_scalar("curves/robot_x_vel", self.data.qvel[0], label="robot x vel")
+            rr.log_scalar("curves/robot_y_vel", self.data.qvel[1], label="robot y vel")
 
         if action is not None:
             np.copyto(self.data.ctrl, action)
         for sim_step_i in range(SIM_STEPS_PER_CONTROL_STEP):
             mujoco.mj_step(self.model, self.data)
             if sim_step_i % SIM_STEPS_PER_VIZ == 0:
-                self.viz()
+                if log:
+                    self.viz()
 
     def viz(self):
         # 3d geometry
