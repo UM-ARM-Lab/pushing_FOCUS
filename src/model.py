@@ -50,7 +50,21 @@ class DynamicsNetwork(pl.LightningModule):
     def forward(self, context, actions):
         context_z = self.context_mlp(context)
         actions_z = self.actions_mlp(actions)
-        outputs = self.predictor_mlp(torch.cat((context_z, actions_z), dim=-1))
+        deltas = self.predictor_mlp(torch.cat((context_z, actions_z), dim=-1))
+        # integrate deltas
+        # starting from the last object position in the context
+        # this is a well known trick in dynamics predictions problems,
+        # and is similar to how ResNets work.
+        # FIXME: don't harcode time
+        T = 8
+        deltas = deltas.reshape(-1, T, 3)
+        deltas = torch.cumsum(deltas, dim=1)
+        context = context.reshape(-1, 3, T)
+        context_object_positions = context[:, :, 3:6]
+        final_object_positions = context_object_positions[:, -1:, :]
+        final_object_positions = torch.tile(final_object_positions, (1, T, 1))
+        outputs = final_object_positions + deltas
+        outputs = outputs.reshape(-1, T * 3)
         return outputs
 
     def compute_errors(self, outputs, targets, global_step=-1):

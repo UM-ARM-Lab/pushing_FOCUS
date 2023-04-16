@@ -1,15 +1,14 @@
-import time
 from typing import Callable
 from uuid import uuid4
 
 import numpy as np
-import rerun as rr
 import wandb
 from tqdm import tqdm
 
 import rrr
 from dataset import save
 from env import Env
+from rrr import viz_state
 
 H = 3
 T = 10
@@ -95,10 +94,3 @@ def append_transition(after, before, action, trajectory):
         'uuid': str(uuid4()),
     }
     trajectory.append(transition)
-
-
-def viz_state(before):
-    rr.log_scalar('state/obj_x', before['object_pos'][0], label='obj x')
-    rr.log_scalar('state/obj_y', before['object_pos'][1], label='obj y')
-    rr.log_scalar('state/robot_x', before['robot_pos'][0], label='robot x')
-    rr.log_scalar('state/robot_y', before['robot_pos'][1], label='robot y')

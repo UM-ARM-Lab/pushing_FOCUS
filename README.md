@@ -53,7 +53,12 @@ pip install -r requirements.txt
 
 # Run a simple LQR controller to reach a position target in the source environment
 # using the source dynamics
-./src/source_lqr.py
+./src/source_control.py
 ```
 
 ## Results
+
+
+## Animations
+
+See the `animations/` folder for videos of the adaptation process for FOCUS versus two baselines.

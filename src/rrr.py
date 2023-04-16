@@ -72,3 +72,10 @@ def mesh_box(body_name, model: _MjModelGeomViews, data: _MjDataGeomViews):
                 positions=mesh.vertices,
                 indices=mesh.faces,
                 albedo_factor=model.rgba)
+
+
+def viz_state(before):
+    rr.log_scalar('state/obj_x', before['object_pos'][0], label='obj x')
+    rr.log_scalar('state/obj_y', before['object_pos'][1], label='obj y')
+    rr.log_scalar('state/robot_x', before['robot_pos'][0], label='robot x')
+    rr.log_scalar('state/robot_y', before['robot_pos'][1], label='robot y')
