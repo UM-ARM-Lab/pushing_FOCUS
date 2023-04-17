@@ -93,8 +93,8 @@ def log_rotational_velocity(entity_name,
     rr.log_line_strip(entity_name + '/arc', arc_positions, color=color, stroke_width=stroke_width)
     # arrow tips
     tip_positions = [
-        arc_positions[-6] * 0.8,
-        arc_positions[-6] * 1.2,
+        position + (arc_positions[-6] - position) * 0.8,
+        position + (arc_positions[-6] - position) * 1.2,
     ]
     tip_positions[0][2] = z
     tip_positions[1][2] = z
