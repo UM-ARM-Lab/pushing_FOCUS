@@ -12,7 +12,7 @@ from env import Env
 from model import DynamicsNetwork
 from mujoco_mppi import MujocoMPPI, normalized
 
-T = 6
+T = 3
 
 
 def goal_satisfied(state, goal, threshold=0.1):
@@ -63,7 +63,7 @@ def main():
             pool = ThreadPoolExecutor(multiprocessing.cpu_count() - 1)
 
             noise_sigma = np.array([0.04, 0.04, 0.1])
-            mppi = MujocoMPPI(pool, env.model, num_samples=50, noise_sigma=noise_sigma, horizon=T, lambda_=10, seed=0)
+            mppi = MujocoMPPI(pool, env.model, num_samples=25, noise_sigma=noise_sigma, horizon=T, lambda_=8, seed=0)
 
             def get_results(_, data):
                 state = env.get_state(data=data)

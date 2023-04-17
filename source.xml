@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mujoco>
-    <option timestep="0.01" viscosity="0.001" />
+    <option timestep="0.01" viscosity="0.001"/>
     <worldbody>
         <body name="floor" pos="0 0 0">
             <geom type="plane" name="floor" size="5 5 0.1" rgba="0.02 0.02 0.05 1" friction="0.04 0.001 0.0001"/>
