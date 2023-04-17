@@ -14,7 +14,6 @@ def init():
     rr.log_arrow('world_z', [0, 0, 0], [0, 0, 1], color=(0, 0, 255), width_scale=0.02)
 
 
-
 def name(*names):
     """ joins names with slashes but ignores empty names """
     return '/'.join([name for name in names if name])
@@ -72,6 +71,36 @@ def mesh_box(body_name, model: _MjModelGeomViews, data: _MjDataGeomViews):
                 positions=mesh.vertices,
                 indices=mesh.faces,
                 albedo_factor=model.rgba)
+
+
+def log_rotational_velocity(entity_name,
+                            position,
+                            rotational_velocity,
+                            color,
+                            stroke_width,
+                            max_vel=1.5,
+                            z=0.12,
+                            radius=0.1):
+    """
+    Draw an arc with an arrow tip centered a position, and with a radius and length proportional to the rotational velocity.
+    """
+    vel_rel = rotational_velocity / max_vel
+    angles = np.linspace(0, 2 * np.pi * vel_rel, 16)
+    arc_xs = position[0] + np.cos(angles) * radius
+    arc_ys = position[1] + np.sin(angles) * radius
+    arc_positions = np.stack([arc_xs, arc_ys, np.ones_like(arc_xs) * z], axis=1)
+    # main body of the arrow
+    rr.log_line_strip(entity_name + '/arc', arc_positions, color=color, stroke_width=stroke_width)
+    # arrow tips
+    tip_positions = [
+        arc_positions[-6] * 0.8,
+        arc_positions[-6] * 1.2,
+    ]
+    tip_positions[0][2] = z
+    tip_positions[1][2] = z
+    rr.log_line_segments(entity_name + '/tip',
+                         [arc_positions[-1], tip_positions[0], arc_positions[-1], tip_positions[1]], color=color,
+                         stroke_width=stroke_width)
 
 
 def viz_state(before):

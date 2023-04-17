@@ -6,9 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import mujoco
 import numpy as np
 
-MAX_VEL_TILL_ERROR_RAD = np.deg2rad(3)
-
-N_SUB_STEPS = 50
+N_SUB_STEPS = 25
 
 
 def rollout(model, data, controls, get_result_func=None):

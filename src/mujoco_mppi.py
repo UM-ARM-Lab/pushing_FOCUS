@@ -27,7 +27,10 @@ class MujocoMPPI:
         self.nu = model.nu
         self.lambda_ = lambda_
 
-        self.noise_sigma = np.ones(self.nu) * noise_sigma
+        if isinstance(noise_sigma, (float, int)):
+            self.noise_sigma = np.ones(self.nu) * noise_sigma
+        else:
+            self.noise_sigma = noise_sigma
         self.noise_rng = np.random.RandomState(seed)
 
         self.U = None
@@ -42,7 +45,6 @@ class MujocoMPPI:
     def roll(self):
         """ shift command 1 time step. Used before sampling a new command. """
         self.U = np.roll(self.U, -1, axis=0)
-        # copy the last action and add noise to it
         self.U[-1] = self.noise_rng.randn(self.nu) * self.noise_sigma
 
     def command(self, data, get_result_func, cost_func):
@@ -67,6 +69,7 @@ class MujocoMPPI:
         """
         noise = self.noise_rng.randn(self.num_samples, self.horizon, self.nu) * self.noise_sigma
         perturbed_action = self.U + noise
+        perturbed_action = self.bound_action(perturbed_action)
 
         results = parallel_rollout(self.pool, self.model, data, perturbed_action, get_result_func)
 
@@ -90,7 +93,7 @@ class MujocoMPPI:
 
         action = self.U[0]
 
-        self.U = normalized(self.U) * min(np.abs(self.U).max(), 0.1)
+        self.U = self.bound_action(self.U)
 
         return action
 
@@ -99,3 +102,8 @@ class MujocoMPPI:
         Resets the control samples.
         """
         self.U = np.zeros([self.horizon, self.nu])
+
+    def bound_action(self, perturbed_action):
+        xy = 0.08
+        rot = 1
+        return np.clip(perturbed_action, [-xy, -xy, -rot], [xy, xy, rot])

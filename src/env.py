@@ -6,9 +6,15 @@ import numpy as np
 import rerun as rr
 
 import rrr
+from rollout import N_SUB_STEPS
 
-SIM_STEPS_PER_CONTROL_STEP = 50
-SIM_STEPS_PER_VIZ = 10
+SIM_STEPS_PER_VIZ = 5
+
+
+def nonempty_name(name):
+    if name is None or name == '':
+        return '_'
+    return name
 
 
 class Env:
@@ -26,15 +32,18 @@ class Env:
     def step(self, action: Optional[np.ndarray], log=True):
         # 2d plots
         if log:
+            rr.set_time_seconds('sim_time', self.data.time)
             rr.log_scalar("curves/robot_x_vel", self.data.qvel[0], label="robot x vel")
             rr.log_scalar("curves/robot_y_vel", self.data.qvel[1], label="robot y vel")
+            rr.log_scalar("curves/robot_z_vel", self.data.qvel[2], label="robot z vel")
 
         if action is not None:
             np.copyto(self.data.ctrl, action)
-        for sim_step_i in range(SIM_STEPS_PER_CONTROL_STEP):
+        for sim_step_i in range(N_SUB_STEPS):
             mujoco.mj_step(self.model, self.data)
             if sim_step_i % SIM_STEPS_PER_VIZ == 0:
                 if log:
+                    rr.set_time_seconds('sim_time', self.data.time)
                     self.viz()
 
     def viz(self):
@@ -44,6 +53,16 @@ class Env:
             for geom_idx in np.arange(body.geomadr, (body.geomadr + body.geomnum)):
                 geom = self.model.geom(geom_idx)
                 self.viz_geom(body.name, geom, geom_idx)
+        # contacts
+        for contact_idx in range(self.data.ncon):
+            geom1 = self.data.contact.geom1[contact_idx]
+            geom2 = self.data.contact.geom2[contact_idx]
+            geom1_name = nonempty_name(self.model.geom(geom1).name)
+            geom2_name = nonempty_name(self.model.geom(geom2).name)
+            pos = self.data.contact.pos[contact_idx]
+            depth = self.data.contact.dist[contact_idx]
+            normal = self.data.contact.frame[contact_idx, :3] * min(max(depth, 0.02), 0.2)
+            rr.log_arrow(f'contact/{geom1_name}/{geom2_name}', pos, pos+normal, color=(255, 0, 0, 125), width_scale=0.003)
 
     def viz_geom(self, body_name, geom, geom_idx):
         match geom.type:
