@@ -1,14 +1,15 @@
 import numpy as np
 import torch
 
-from mppi_runner import MPPIRunner
+from mppi_runner import MujocoMPPIRunner, LearnedMPPIRunner
 
 
 def main():
     np.set_printoptions(precision=3, suppress=True)
     torch.set_printoptions(precision=3, sci_mode=False)
 
-    runner = MPPIRunner()
+    # runner = MujocoMPPIRunner(horizon=8)
+    runner = LearnedMPPIRunner(horizon=8)  # must be 8 to match how model was trained
 
     for i in range(3):
         for seed in range(3):

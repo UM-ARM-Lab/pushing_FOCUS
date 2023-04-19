@@ -48,6 +48,11 @@ class DynamicsNetwork(pl.LightningModule):
         return self.val_dataloaders
 
     def forward(self, context, actions):
+        """
+        Args:
+            context: a tensor of shape (batch_size, 3*9)
+            actions: a tensor of shape (batch_size, 8*3)
+        """
         context_z = self.context_mlp(context)
         actions_z = self.actions_mlp(actions)
         deltas = self.predictor_mlp(torch.cat((context_z, actions_z), dim=-1))

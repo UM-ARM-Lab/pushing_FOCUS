@@ -1,7 +1,5 @@
 import numpy as np
 
-from rollout import parallel_rollout
-
 
 def softmax(x, temp):
     x = x * temp
@@ -12,7 +10,7 @@ def normalized(x):
     return (x - x.min()) / (x.max() - x.min())
 
 
-class MujocoMPPI:
+class MPPI:
 
     def __init__(self, pool, model, num_samples, horizon, noise_sigma, lambda_=1., gamma=0.9, seed=0):
         self.pool = pool
@@ -68,7 +66,7 @@ class MujocoMPPI:
         self.cost_normalized = normalized(self.cost)
 
         weights = softmax(-self.cost_normalized, self.lambda_)
-        print(f'weights: std={float(np.std(weights)):.2f} max={float(np.max(weights)):.2f}')
+        # print(f'weights: std={float(np.std(weights)):.2f} max={float(np.max(weights)):.2f}')
 
         # compute the (weighted) average noise and add that to the reference control
         weighted_avg_noise = np.sum(weights[:, None, None] * noise, axis=0)
