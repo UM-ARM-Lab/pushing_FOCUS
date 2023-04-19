@@ -8,7 +8,7 @@ import rerun as rr
 import rrr
 from rollout import N_SUB_STEPS
 
-SIM_STEPS_PER_VIZ = 5
+SIM_STEPS_PER_VIZ = 25
 
 
 def nonempty_name(name):
@@ -29,10 +29,10 @@ class Env:
             self.model = mujoco.MjModel.from_xml_path(model_xml_filename)
             self.data = mujoco.MjData(self.model)
 
-    def step(self, action: Optional[np.ndarray], log=True):
+    def step(self, action: Optional[np.ndarray], log=True, time_offset=0):
         # 2d plots
         if log:
-            rr.set_time_seconds('sim_time', self.data.time)
+            rr.set_time_seconds('sim_time', self.data.time + time_offset)
             rr.log_scalar("curves/robot_x_vel", self.data.qvel[0], label="robot x vel")
             rr.log_scalar("curves/robot_y_vel", self.data.qvel[1], label="robot y vel")
             rr.log_scalar("curves/robot_z_vel", self.data.qvel[2], label="robot z vel")
@@ -43,7 +43,7 @@ class Env:
             mujoco.mj_step(self.model, self.data)
             if sim_step_i % SIM_STEPS_PER_VIZ == 0:
                 if log:
-                    rr.set_time_seconds('sim_time', self.data.time)
+                    rr.set_time_seconds('sim_time', self.data.time + time_offset)
                     self.viz()
 
     def viz(self):

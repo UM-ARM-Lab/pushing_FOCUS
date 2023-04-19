@@ -12,7 +12,7 @@ from torch.optim import Adam
 
 
 class DynamicsNetwork(pl.LightningModule):
-    def __init__(self, method: Optional[str] = None, context_dim=24, action_dim=16, output_dim=24, lr=1e-3,
+    def __init__(self, method: Optional[str] = None, context_dim=27, action_dim=24, output_dim=24, lr=1e-3,
                  train_dataloaders=None,
                  val_dataloaders=None, gamma=0.001, global_k=10):
         super().__init__()
@@ -59,7 +59,7 @@ class DynamicsNetwork(pl.LightningModule):
         T = 8
         deltas = deltas.reshape(-1, T, 3)
         deltas = torch.cumsum(deltas, dim=1)
-        context = context.reshape(-1, 3, T)
+        context = context.reshape(-1, 3, 9)
         context_object_positions = context[:, :, 3:6]
         final_object_positions = context_object_positions[:, -1:, :]
         final_object_positions = torch.tile(final_object_positions, (1, T, 1))

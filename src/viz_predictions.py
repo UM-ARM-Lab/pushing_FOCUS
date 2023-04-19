@@ -48,7 +48,7 @@ def main():
         target_obj_positions = target_obj_positions.reshape(-1, 3)
         target_robot_positions = target_robot_positions.reshape(-1, 3)
 
-        context_traj = context.reshape(-1, 8)
+        context_traj = context.reshape(-1, 9)
         context_obj_positions = context_traj[:, 3:6]
         context_robot_positions = context_traj[:, 0:3]
 

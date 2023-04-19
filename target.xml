@@ -1,22 +1,42 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mujoco>
-    <option timestep="0.01" viscosity="0.001" />
+    <option timestep="0.002" viscosity="0.001">
+        <flag multiccd="enable"/>
+    </option>
+    <default>
+        <geom friction="0.04 0.001 0.0001"/>
+    </default>
     <worldbody>
-        <body name="floor" pos="0 0 0">
-            <geom type="plane" name="floor" size="5 5 0.1" rgba="0.02 0.02 0.05 1" friction="0.01 0.001 0.0001"/>
+        <body name="floor" pos="0 0 -0.3">
+            <geom type="plane" name="floor" size="2 2 0.1" rgba="0.02 0.02 0.05 1"/>
         </body>
-        <body name="robot" pos="0 0.0 0.05">
-            <geom type="cylinder" size="0.05 0.05" rgba="0.8 0.2 0.8 1"/>
-            <joint type="slide" name="x" pos="0 0 0" axis="1 0 0" damping="1" />
-            <joint type="slide" name="y" pos="0 0 0" axis="0 1 0" damping="1" />
+        <body name="table1" pos="0 0 -0.1">
+            <geom type="box" name="table1" size="0.2 1 0.1" rgba="0.02 0.1 0.05 1"/>
         </body>
-        <body name="object" pos="0.13 0 0.05">
-            <geom type="cylinder" size="0.08 0.05" rgba="0.2 0.8 0.8 1" friction="0.01 0.001 0.0001"/>
-            <joint type="free" name="object_free" damping="0.01"/>
+        <body name="table2" pos="0.3 -0.6 -0.1">
+            <geom type="box" name="table2" size="0.1 0.5 0.1" rgba="0.2 0.1 0.05 1"/>
+        </body>
+        <body name="table3" pos="0.3 0.6 -0.1">
+            <geom type="box" name="table3" size="0.1 0.5 0.1" rgba="0.1 0.2 0.05 1"/>
+        </body>
+        <body name="table4" pos="0.6 0 -0.1">
+            <geom type="box" name="table4" size="0.2 1 0.1" rgba="0.02 0.1 0.05 1"/>
+        </body>
+        <body name="robot" pos="0.02 0.0 0.055">
+            <geom type="box" name="top_finger" pos="0 0.06 0" euler="0 0 45" size="0.1 0.01 0.05" rgba="0.8 0.5 0.5 1"/>
+            <geom type="box" name="bottom_finger" pos="0 -0.06 0" euler="0 0 -45" size="0.1 0.01 0.05" rgba="0.8 0.5 0.5 1"/>
+            <joint type="slide" name="x" pos="0 0 0" axis="1 0 0" damping="2" />
+            <joint type="slide" name="y" pos="0 0 0" axis="0 1 0" damping="2" />
+            <joint type="hinge" name="z" pos="0 0 0" axis="0 0 1" damping="2" />
+        </body>
+        <body name="object" pos="0.05 0 0.031">
+            <geom type="cylinder" name="base" size="0.05 0.03" rgba="0.2 0.8 0.8 1"/>
+            <joint type="free"  damping="0.01"/>
         </body>
     </worldbody>
     <actuator>
-        <velocity name="x" joint="x" kv="100"/>
-        <velocity name="y" joint="y" kv="100"/>
+        <velocity name="x" joint="x" kv="50"/>
+        <velocity name="y" joint="y" kv="50"/>
+        <velocity name="z" joint="z" kv="2"/>
     </actuator>
 </mujoco>

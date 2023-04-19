@@ -41,7 +41,7 @@ def collect_data(nominal_generator: Callable, env_name: str, model_xml_filename:
         before = env.get_state()
 
         # sample a nominal velocity
-        nominal_x_vel, nominal_y_vel = nominal_generator(rng)
+        nominal_vel = nominal_generator(rng)
 
         trajectory = []
 
@@ -50,7 +50,7 @@ def collect_data(nominal_generator: Callable, env_name: str, model_xml_filename:
         # our training data should also have this, so we step a few times to collect
         # some initial data with no motion.
         for _ in range(H):
-            action = np.array([0, 0])
+            action = np.array([0, 0, 0])
 
             env.step(action)
             after = env.get_state()
@@ -62,7 +62,7 @@ def collect_data(nominal_generator: Callable, env_name: str, model_xml_filename:
             before = after
 
         for _ in range(12):
-            action = np.array([nominal_x_vel, nominal_y_vel]) + rng.normal(0, 0.005, size=(2,))
+            action = nominal_vel + rng.normal([0, 0, 0], [0.005, 0.005, 0.05])
 
             env.step(action)
             after = env.get_state()

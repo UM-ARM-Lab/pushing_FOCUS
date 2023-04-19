@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import mujoco
 import numpy as np
 
-N_SUB_STEPS = 25
+N_SUB_STEPS = 125
 
 
 def rollout(model, data, controls, get_result_func=None):

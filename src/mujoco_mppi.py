@@ -34,48 +34,31 @@ class MujocoMPPI:
         self.noise_rng = np.random.RandomState(seed)
 
         self.U = None
+        self.cost = None
+        self.cost_normalized = None
         self.reset()
-
-        # sampled results from last command
-        self.cost_total = None
-        self.cost_total_non_zero = None
-        self.rollout_results = None
-        self.actions = None
 
     def roll(self):
         """ shift command 1 time step. Used before sampling a new command. """
         self.U = np.roll(self.U, -1, axis=0)
         self.U[-1] = self.noise_rng.randn(self.nu) * self.noise_sigma
 
-    def command(self, data, get_result_func, cost_func):
+    def command(self, dynamics_and_cost_func, **kwargs):
         """
-        Use this for no warmstarting.
+        Recompute the best command. One iteration of the MPPI algorithm.
+        You probably want to run this a few times before using the output.
 
-        cost func needs to take in the output of get_result_func and return a cost for each sample.
-        get_result_func needs to take in the model and data and return a result for each sample, which
-        can be any object or tuple of objects.
-        """
-        self.roll()
+        Args:
+            dynamics_and_cost_func: function that takes in the perturbed action and returns the cost
+            kwargs: keyword args that will be forward to dynamics_and_cost_func
 
-        return self._command(data, get_result_func, cost_func)
-
-    def _command(self, data, get_result_func, cost_func):
-        """
-        Use this for warmstarting.
-
-        cost func needs to take in the output of get_result_func and return a cost for each sample.
-        get_result_func needs to take in the model and data and return a result for each sample, which
-        can be any object or tuple of objects.
+        NOTE: this function could just have no args and the current args could be moved to the constructor?
         """
         noise = self.noise_rng.randn(self.num_samples, self.horizon, self.nu) * self.noise_sigma
         perturbed_action = self.U + noise
         perturbed_action = self.bound_action(perturbed_action)
 
-        results = parallel_rollout(self.pool, self.model, data, perturbed_action, get_result_func)
-
-        self.rollout_results = results
-        self.actions = perturbed_action
-        costs = cost_func(results, perturbed_action)
+        costs = dynamics_and_cost_func(perturbed_action, **kwargs)
 
         self.cost = np.sum(self.gammas * costs, axis=-1)
 
