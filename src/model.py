@@ -10,11 +10,13 @@ import wandb
 from torch import nn
 from torch.optim import Adam
 
+from collect_data import H
+from dataset import P
+
 
 class DynamicsNetwork(pl.LightningModule):
-    def __init__(self, method: Optional[str] = None, context_dim=27, action_dim=24, output_dim=24, lr=1e-3,
-                 train_dataloaders=None,
-                 val_dataloaders=None, gamma=0.001, global_k=10):
+    def __init__(self, method: Optional[str] = None, context_dim=H * 9, action_dim=P * 3, output_dim=P * 3, lr=1e-3,
+                 train_dataloaders=None, val_dataloaders=None, gamma=0.001, global_k=10):
         super().__init__()
         assert global_k > 0
         self.train_dataloaders = train_dataloaders
@@ -50,8 +52,8 @@ class DynamicsNetwork(pl.LightningModule):
     def forward(self, context, actions):
         """
         Args:
-            context: a tensor of shape (batch_size, 3*9)
-            actions: a tensor of shape (batch_size, 8*3)
+            context: a tensor of shape (batch_size, H*9)
+            actions: a tensor of shape (batch_size, P*3)
         """
         context_z = self.context_mlp(context)
         actions_z = self.actions_mlp(actions)
@@ -60,16 +62,14 @@ class DynamicsNetwork(pl.LightningModule):
         # starting from the last object position in the context
         # this is a well known trick in dynamics predictions problems,
         # and is similar to how ResNets work.
-        # FIXME: don't harcode time
-        T = 8
-        deltas = deltas.reshape(-1, T, 3)
+        deltas = deltas.reshape(-1, P, 3)
         deltas = torch.cumsum(deltas, dim=1)
         context = context.reshape(-1, 3, 9)
         context_object_positions = context[:, :, 3:6]
         final_object_positions = context_object_positions[:, -1:, :]
-        final_object_positions = torch.tile(final_object_positions, (1, T, 1))
+        final_object_positions = torch.tile(final_object_positions, (1, P, 1))
         outputs = final_object_positions + deltas
-        outputs = outputs.reshape(-1, T * 3)
+        outputs = outputs.reshape(-1, P * 3)
         return outputs
 
     def compute_errors(self, outputs, targets, global_step=-1):
@@ -137,7 +137,7 @@ class DynamicsNetwork(pl.LightningModule):
 
 
 class MDE(pl.LightningModule):
-    def __init__(self, context_dim=9 * 3, action_dim=8 * 3, output_dim=8):
+    def __init__(self, context_dim=9 * 3, action_dim=P * 3, predictions_dim=P * 3, output_dim=P):
         super().__init__()
         self.context_mlp = nn.Sequential(
             nn.Linear(context_dim, 256),
@@ -149,23 +149,29 @@ class MDE(pl.LightningModule):
             nn.Linear(action_dim, 256),
             nn.ReLU(),
         )
+        self.predictions_mlp = nn.Sequential(
+            nn.Linear(predictions_dim, 256),
+            nn.ReLU(),
+        )
         self.deviation_mlp = nn.Sequential(
-            nn.Linear(256 + 256, 256),
+            nn.Linear(256 * 3, 256),
             nn.ReLU(),
             nn.Linear(256, 256),
             nn.ReLU(),
             nn.Linear(256, output_dim),
         )
 
-    def forward(self, context, actions):
+    def forward(self, context, actions, predictions):
         """
         Args:
-            context: a tensor of shape (batch_size, 3*9)
-            actions: a tensor of shape (batch_size, 8*3)
+            context: a tensor of shape (batch_size, H*9)
+            actions: a tensor of shape (batch_size, P*3)
+            predictions: a tensor of shape (batch_size, P*3)
         """
         context_z = self.context_mlp(context)
         actions_z = self.action_mlp(actions)
-        deviations = self.deviation_mlp(torch.cat((context_z, actions_z), dim=-1))
+        predictions_z = self.predictions_mlp(predictions)
+        deviations = self.deviation_mlp(torch.cat((context_z, actions_z, predictions_z), dim=-1))
         return deviations
 
     def compute_errors(self, outputs, targets):
@@ -176,8 +182,8 @@ class MDE(pl.LightningModule):
         return log_dict
 
     def training_step(self, batch, batch_idx=None):
-        context, actions, target_deviations, uuids = batch
-        outputs = self.forward(context, actions)
+        context, actions, predictions, target_deviations, uuids = batch
+        outputs = self.forward(context, actions, predictions)
         log_dict = self.compute_errors(outputs, target_deviations)
         log_dict["uuids"] = uuids
 

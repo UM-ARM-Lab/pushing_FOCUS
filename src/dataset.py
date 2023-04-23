@@ -5,9 +5,14 @@ from typing import Optional, List, Dict
 import numpy as np
 import torch
 import wandb
+from matplotlib import pyplot as plt, cm
 from torch.utils.data import Dataset
 
+from collect_data import T
+
 H = 3
+# the prediction horizon
+P = T - H + 1
 
 
 def get_context(trajectory):
@@ -32,6 +37,16 @@ def get_actions(trajectory):
         actions.append(action_t)
     actions = torch.flatten(torch.tensor(np.array(actions)))
     return actions
+
+
+def get_predictions(trajectory):
+    predictions = []
+    for t in range(H - 1, len(trajectory)):
+        transition_t = trajectory[t]
+        pred_object_pos_t = transition_t['pred_object_pos']
+        predictions.append(pred_object_pos_t)
+    predictions = torch.flatten(torch.tensor(np.array(predictions)))
+    return predictions
 
 
 def get_targets(trajectory):
@@ -103,9 +118,9 @@ class MDEDataset(Dataset):
         Returns a tuple of (context, actions, deviations, uuid).
         context: (H*9) flattened
             Robot position, and object position, and action for H time steps before prediction starts.
-        actions: (8*3)
+        actions: (T*3)
             next action
-        target_deviation: (8)
+        target_deviation: (T)
             Object position for the next time step
         uuid: string
             Unique identifier for the trajectory.
@@ -114,17 +129,16 @@ class MDEDataset(Dataset):
 
         context = get_context(trajectory)
         actions = get_actions(trajectory)
-        target_deviations = torch.tensor([t['deviation'] for t in trajectory[H-1:]], dtype=torch.float)
+        predictions = get_predictions(trajectory)
+        target_deviations = torch.tensor([t['deviation'] for t in trajectory[H - 1:]], dtype=torch.float)
         uuid = trajectory[0]['uuid']
-        return context.float(), actions.float(), target_deviations, uuid
+        return context.float(), actions.float(), predictions.float(), target_deviations, uuid
 
     def viz_dataset(self):
         """
         Plot the x/y positions of the final object position,
         with the final deviation as the color of the point.
         """
-        import matplotlib.pyplot as plt
-        from matplotlib import cm
         final_deviations = []
         all_deviations = []
         for traj in self.trajectories:
@@ -132,25 +146,38 @@ class MDEDataset(Dataset):
             for transition in traj[2:]:
                 all_deviations.append(transition['deviation'])
         final_deviations = np.array(final_deviations)
-        colors = cm.jet(final_deviations * 3)
-        xs = [t[-1]['before']['object_pos'][0] for t in self.trajectories]
-        ys = [t[-1]['before']['object_pos'][1] for t in self.trajectories]
-        plt.figure()
-        plt.scatter(xs, ys, c=colors)
-        plt.axis("equal")
-        plt.xlim(0, 0.75)
-        plt.ylim(-0.5, 0.5)
-        plt.title("final deviations")
-        plt.xlabel("final objet x")
-        plt.ylabel("final objet y")
 
-        plt.figure()
-        plt.hist(all_deviations)
-        plt.xlabel("deviation")
-        plt.ylabel("count")
-        plt.title("all deviations")
+        viz_final_deviations(self.trajectories, final_deviations, 'all data')
+
+        # plt.figure()
+        # plt.hist(all_deviations)
+        # plt.xlabel("deviation")
+        # plt.ylabel("count")
+        # plt.title("all deviations")
+
         plt.show()
 
+
+def viz_final_deviations(trajectories, final_deviations, title):
+    plt.figure()
+    for traj, final_deviation in zip(trajectories, final_deviations):
+        # context = get_context(traj).detach().numpy()
+        # context = context.reshape(H, 9)
+        # context_object_positions = context[-1, 3:6]
+        predictions = get_predictions(traj).detach().numpy()
+        predictions = predictions.reshape(P, 3)
+        color = cm.jet(final_deviation * 3)
+        plt.plot(predictions[:, 0], predictions[:, 1], color=color)
+        plt.scatter(predictions[0, 0], predictions[0, 1], color=color)
+        plt.scatter(predictions[-1, 0], predictions[-1, 1], color=color)
+
+    plt.axis("equal")
+    plt.xlim(0, 0.5)
+    plt.ylim(-0.25, 0.25)
+    plt.title(f"{title}: final deviations")
+    plt.xlabel("final object x")
+    plt.ylabel("final object y")
+    plt.show()
 
 
 def save(dataset, env_name, seed):

@@ -19,8 +19,8 @@ def main():
     dynamics = DynamicsNetwork.load_from_checkpoint(model_path / 'model.ckpt')
     dynamics.eval()
 
-    # runner = MujocoMPPIRunner('target.xml', horizon=8, dynamics=None)
-    runner = LearnedMPPIRunner('target.xml', horizon=8, dynamics=dynamics)  # must be 8 to match how model was trained
+    # runner = MujocoMPPIRunner('target.xml',  dynamics=None)
+    runner = LearnedMPPIRunner('target.xml', dynamics=dynamics)  # must be 8 to match how model was trained
 
     n_total = 0
     n_success = 0

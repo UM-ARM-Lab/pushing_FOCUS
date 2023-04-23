@@ -7,7 +7,7 @@ import torch
 
 import rrr
 from collect_data import append_transition
-from dataset import get_context
+from dataset import get_context, P
 from env import Env
 from model import DynamicsNetwork
 from mppi import MPPI, normalized
@@ -35,17 +35,16 @@ def goal_satisfied(state, goal, threshold=0.1):
 
 class MPPIRunner:
 
-    def __init__(self, xml_model_filename: str, horizon: int, dynamics: DynamicsNetwork):
+    def __init__(self, xml_model_filename: str, dynamics: DynamicsNetwork):
         self.xml_model_filename = xml_model_filename
         self.env = Env(xml_model_filename)
-        self.horizon = horizon
         self.dynamics = dynamics
         self.mde = None
 
         self.pool = ThreadPoolExecutor(multiprocessing.cpu_count() - 1)
 
         noise_sigma = np.array([0.04, 0.04, 0.1])
-        self.mppi = MPPI(self.pool, self.env.model, num_samples=35, noise_sigma=noise_sigma, horizon=self.horizon,
+        self.mppi = MPPI(self.pool, self.env.model, num_samples=35, noise_sigma=noise_sigma, horizon=P,
                          lambda_=8,
                          seed=0)
 
@@ -104,7 +103,7 @@ class MPPIRunner:
                 print(f'Goal reached in {t} steps')
                 return True, trajectory
 
-            if before['object_pos'][2] < 0.025:
+            if before['object_pos'][2] < 0.0:
                 print('Object fell')
                 return False, trajectory
 
@@ -123,7 +122,7 @@ class MPPIRunner:
         Compute the cost of the object sequences.
 
         Args:
-            object_sequences: [num_samples, T, 3]
+            object_sequences: [num_samples, P, 3]
         """
         goal_cost = np.linalg.norm(object_sequences - goal, axis=-1)
 
@@ -171,10 +170,10 @@ class LearnedMPPIRunner(MPPIRunner):
         Also generate visualization for the predicted trajectories.
 
         Args:
-            perturbed_action: [num_samples, T, 3]
+            perturbed_action: [num_samples, P, 3]
         """
-        # context [num_samples, 3, 9] flattened to [num_samples, 27]
-        # actions [num_samples, 8, 3] flattened to [num_samples, 24]
+        # context [num_samples, H, 9] flattened to [num_samples, 27]
+        # actions [num_samples, P, 3] flattened to [num_samples, 24]
         if len(self.context_buffer) > 3:
             self.context_buffer.pop(0)
 
@@ -182,17 +181,18 @@ class LearnedMPPIRunner(MPPIRunner):
         context = get_context(self.context_buffer).float()
         context = torch.tile(context, [num_samples, 1])
         perturbed_action_flat = torch.tensor(perturbed_action).float().reshape(num_samples, -1)
-        outputs = self.dynamics(context, perturbed_action_flat)  # [num_samples, 8, 3] flattened to [num_samples, 24]
-        object_sequences = outputs.reshape(num_samples, 8, 3).cpu().detach().numpy()
+        predictions = self.dynamics(context, perturbed_action_flat)  # [num_samples, P, 3] flattened to [num_samples, 24]
+        object_sequences = predictions.reshape(num_samples, P, 3).cpu().detach().numpy()
         costs = self.cost(object_sequences, goal)
         if self.mde is not None:
-            mde_costs = self.mde_costs(context, perturbed_action_flat)
+            mde_costs = self.mde_costs(context, perturbed_action_flat, predictions)
+            binary_mde_costs = np.maximum(mde_costs - 0.02, 0)
         else:
-            mde_costs = 0
+            binary_mde_costs = 0
 
-        return costs + mde_costs
+        return costs + binary_mde_costs * 100
 
-    def mde_costs(self, context, actions):
-        deviations = self.mde(context, actions)
+    def mde_costs(self, context, actions, predictions):
+        deviations = self.mde(context, actions, predictions)
         deviations = deviations.detach().numpy()
         return deviations

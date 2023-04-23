@@ -13,7 +13,7 @@ from rrr import viz_state
 # Context size
 H = 3
 # Total trajectory length
-T = 10
+T = 20
 T_STEP = 1
 
 

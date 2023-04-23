@@ -2,6 +2,7 @@
 The main file demonstrating the full online-learning method proposed in the following paper:
 https://arxiv.org/abs/2209.14261
 """
+import logging
 from copy import deepcopy
 from pathlib import Path
 
@@ -9,10 +10,12 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import wandb
+from matplotlib import pyplot as plt
 from more_itertools import windowed
 from torch.utils.data import DataLoader
 
-from dataset import DynamicsDataset, MDEDataset, get_actions, get_context, H
+from collect_data import T
+from dataset import DynamicsDataset, MDEDataset, get_actions, get_context, H, viz_final_deviations
 from model import DynamicsNetwork, MDE
 from mppi_runner import LearnedMPPIRunner
 
@@ -31,7 +34,7 @@ class FOCUS:
         # There's no such thing as an MDE for the source environment, so we'll just set it to None
         self.mde = None
 
-        self.runner = LearnedMPPIRunner('target.xml', horizon=8, dynamics=self.dynamics)
+        self.runner = LearnedMPPIRunner('target.xml', dynamics=self.dynamics)
         self.goal_rng = np.random.RandomState(0)
 
         self.dynamics_trajectories = []
@@ -41,39 +44,23 @@ class FOCUS:
         self.itr = 0
 
     def run(self):
-        for self.itr in range(20):
+        for self.itr in range(500):
             self.run_episode(self.itr)
 
-    def viz_mde(self):
-        # plot the estimated deviation for each x,y point in a grid
-        # from [0, -0.5] to [1, 0.5]
-        s = 20
-        xmin = 0
-        xmax = 0.75
-        ymin = -0.5
-        ymax = 0.5
-        x = np.linspace(xmin, xmax, s)
-        y = np.linspace(ymin, ymax, s)
-        xy = torch.tensor(np.stack(np.meshgrid(x, y), axis=-1).reshape(-1, 2))
-        xy = torch.tile(xy[:, None], [1, 3, 1])
-        context = get_context(self.dynamics_trajectories[0])
-        context = torch.tile(context.reshape([1, -1, 9]), [len(xy), 1, 1])
-        context[:, :, 0:2] += xy
-        context[:, :, 4:6] += xy
-        context = context.reshape([len(xy), 27])
-        # offset the robot and object positions by the XY grid
-        action = torch.tensor([0.08, 0, 0])  # a simple forward push
-        actions = torch.reshape(torch.tile(action[None, None], [s**2, 8, 1]), [s**2, -1])
-        estimated_deviations = self.mde(context.float(), actions.float())
-        mean_est_deviation = estimated_deviations.mean(-1)
-        print(min(mean_est_deviation), max(mean_est_deviation))
+    def viz_mde(self, new_mde_trajectories, title: str):
+        if self.mde is None:
+            return
 
-        import matplotlib.pyplot as plt
-        data = mean_est_deviation.reshape(s, s).detach().numpy()
-        plt.imshow(data)
-        plt.xticks(np.linspace(0, s, 5), np.linspace(xmin, xmax, 5))
-        plt.yticks(np.linspace(0, s, 5), np.linspace(ymin, ymax, 5))
-        plt.title(self.itr)
+        context = torch.stack([get_context(t) for t in new_mde_trajectories]).float()
+        actions = torch.stack([get_actions(t) for t in new_mde_trajectories]).float()
+        predictions = self.dynamics(context, actions)
+
+        estimated_deviations = self.mde(context, actions, predictions)
+        final_estimated_deviation = estimated_deviations[:, -1]
+        final_estimated_deviation = final_estimated_deviation.detach().numpy()
+        # print(f'{min(final_estimated_deviation)=} {max(final_estimated_deviation)=}')
+
+        viz_final_deviations(new_mde_trajectories, final_estimated_deviation, f'{title}')
         plt.show()
 
     def run_episode(self, episode_idx: int):
@@ -93,7 +80,7 @@ class FOCUS:
             self.dynamics_trajectories.append(list(traj))
 
         # fine-tune dynamics model (using the proposed adaptation method!)
-        # dynamics_loader = DataLoader(self.dynamics_dataset, batch_size=16)
+        # dynamics_loader = DataLoader(self.dynamics_dataset, batch_size=64)
         # wandb.init(project='pushing_focus_online', name=f'fine_tune_dynamics_{episode_idx   }')
         # trainer = pl.Trainer(max_epochs=10, logger=None, log_every_n_steps=1)
         # trainer.fit(self.dynamics, dynamics_loader, val_dataloaders=[])
@@ -101,31 +88,36 @@ class FOCUS:
 
         # update MDE dataset
         # use a deepcopy, so we don't accidentally modify the dynamics dataset trajectories
+        new_mde_trajectories = []
         for mde_traj in deepcopy(trajectories):
             context = get_context(mde_traj).float()[None]
             actions = get_actions(mde_traj).float()[None]
-            pred_object_positions = self.dynamics(context, actions)[0]
-            pred_object_positions = pred_object_positions.reshape(-1, 3)
-            pred_object_positions = pred_object_positions.detach().numpy()  # [8, 3]
-            object_positions = np.array([t['before']['object_pos'] for t in mde_traj[H - 1:]])  # [8, 3]
+            pred_object_positions_flat = self.dynamics(context, actions)[0]
+            pred_object_positions = pred_object_positions_flat.reshape(-1, 3)
+            pred_object_positions = pred_object_positions.detach().numpy()  # [T, 3]
+            object_positions = np.array([t['before']['object_pos'] for t in mde_traj[H - 1:]])  # [T, 3]
             deviations = np.linalg.norm(pred_object_positions - object_positions, axis=-1)
-            print(deviations)
+            # print(f'{deviations[-1]=}')
             for t, transition in enumerate(mde_traj[H - 1:]):
                 transition['deviation'] = deviations[t]
-            self.mde_trajectories.append(list(mde_traj))
+                transition['pred_object_pos'] = pred_object_positions[t]
+            new_mde_trajectories.append(list(mde_traj))
+        self.mde_trajectories.extend(new_mde_trajectories)
 
         # fine-tune MDE (standard)
-        mde_loader = DataLoader(self.mde_dataset, batch_size=16)
-        trainer = pl.Trainer(max_epochs=5, logger=None, log_every_n_steps=1)
+        # self.viz_mde(new_mde_trajectories, 'before')
+        mde_loader = DataLoader(self.mde_dataset, batch_size=999)  # FIXME: full batch vs minibatch
+        trainer = pl.Trainer(max_epochs=25, logger=None, log_every_n_steps=1)
         if self.mde is None:
             self.mde = MDE()
         trainer.fit(self.mde, mde_loader)
-        self.mde_dataset.viz_dataset()
-        self.viz_mde()
+        # self.viz_mde(new_mde_trajectories, 'after')
+        # self.mde_dataset.viz_dataset()
         print("done")
 
 
 def main():
+    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
     torch.manual_seed(0)
     np.set_printoptions(precision=4, suppress=True)
     torch.set_printoptions(precision=4, sci_mode=False)
