@@ -1,7 +1,10 @@
-wandb
-scikit-spatial
+more-itertools
 mujoco
-rerun-sdk
-torch
+numpy
 pytorch-lightning
+rerun-sdk
+scikit-spatial
 seaborn
+torch
+tqdm
+wandb

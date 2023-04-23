@@ -19,14 +19,14 @@ def main():
     dynamics = DynamicsNetwork.load_from_checkpoint(model_path / 'model.ckpt')
     dynamics.eval()
 
-    # runner = MujocoMPPIRunner('source.xml', horizon=8)
-    runner = LearnedMPPIRunner('source.xml', horizon=8)  # must be 8 to match how model was trained
+    # runner = MujocoMPPIRunner('target.xml', horizon=8, dynamics=None)
+    runner = LearnedMPPIRunner('target.xml', horizon=8, dynamics=dynamics)  # must be 8 to match how model was trained
 
     n_total = 0
     n_success = 0
     for i in range(3):
         for seed in range(3):
-            goal = np.random.uniform([0.3, -0.4, 0.05], [0.7, 0.4, 0.05])
+            goal = np.random.uniform([0.5, -0.1, 0.05], [0.7, 0.1, 0.05])
             success, _ = runner.run(goal)
             n_total += 1
             if success:

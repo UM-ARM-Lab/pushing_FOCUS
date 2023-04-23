@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Dict, List
 from uuid import uuid4
 
 import numpy as np
@@ -30,7 +30,7 @@ def collect_data(nominal_generator: Callable, env_name: str, model_xml_filename:
     """
     rrr.init()
 
-    dataset = []
+    dataset: List[List[Dict]] = []
 
     rng = np.random.RandomState(seed)
 

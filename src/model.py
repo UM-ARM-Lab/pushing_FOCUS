@@ -134,3 +134,55 @@ class DynamicsNetwork(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.lr)
         return optimizer
+
+
+class MDE(pl.LightningModule):
+    def __init__(self, context_dim=9 * 3, action_dim=8 * 3, output_dim=8):
+        super().__init__()
+        self.context_mlp = nn.Sequential(
+            nn.Linear(context_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU()
+        )
+        self.action_mlp = nn.Sequential(
+            nn.Linear(action_dim, 256),
+            nn.ReLU(),
+        )
+        self.deviation_mlp = nn.Sequential(
+            nn.Linear(256 + 256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_dim),
+        )
+
+    def forward(self, context, actions):
+        """
+        Args:
+            context: a tensor of shape (batch_size, 3*9)
+            actions: a tensor of shape (batch_size, 8*3)
+        """
+        context_z = self.context_mlp(context)
+        actions_z = self.action_mlp(actions)
+        deviations = self.deviation_mlp(torch.cat((context_z, actions_z), dim=-1))
+        return deviations
+
+    def compute_errors(self, outputs, targets):
+        error = (outputs - targets).square().sum(-1)
+        log_dict = {"error": error.detach().cpu().numpy()}
+        loss = error.mean()
+        log_dict["loss"] = loss
+        return log_dict
+
+    def training_step(self, batch, batch_idx=None):
+        context, actions, target_deviations, uuids = batch
+        outputs = self.forward(context, actions)
+        log_dict = self.compute_errors(outputs, target_deviations)
+        log_dict["uuids"] = uuids
+
+        return log_dict['loss']
+
+    def configure_optimizers(self):
+        optimizer = Adam(self.parameters(), lr=1e-3)
+        return optimizer

@@ -3,3 +3,4 @@ __pycache__
 pushing_focus
 venv
 wandb
+lightning_logs

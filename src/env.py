@@ -29,6 +29,8 @@ class Env:
             self.model = mujoco.MjModel.from_xml_path(model_xml_filename)
             self.data = mujoco.MjData(self.model)
 
+        mujoco.mj_forward(self.model, self.data)
+
     def step(self, action: Optional[np.ndarray], log=True, time_offset=0):
         # 2d plots
         if log:

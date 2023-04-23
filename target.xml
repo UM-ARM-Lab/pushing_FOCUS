@@ -10,8 +10,8 @@
         <body name="floor" pos="0 0 -0.3">
             <geom type="plane" name="floor" size="2 2 0.1" rgba="0.02 0.02 0.05 1"/>
         </body>
-        <body name="table1" pos="0 0 -0.1">
-            <geom type="box" name="table1" size="0.2 1 0.1" rgba="0.02 0.1 0.05 1"/>
+        <body name="table1" pos="-0.2 0 -0.1">
+            <geom type="box" name="table1" size="0.4 1 0.1" rgba="0.02 0.1 0.05 1"/>
         </body>
         <body name="table2" pos="0.3 -0.6 -0.1">
             <geom type="box" name="table2" size="0.1 0.5 0.1" rgba="0.2 0.1 0.05 1"/>
@@ -19,8 +19,8 @@
         <body name="table3" pos="0.3 0.6 -0.1">
             <geom type="box" name="table3" size="0.1 0.5 0.1" rgba="0.1 0.2 0.05 1"/>
         </body>
-        <body name="table4" pos="0.6 0 -0.1">
-            <geom type="box" name="table4" size="0.2 1 0.1" rgba="0.02 0.1 0.05 1"/>
+        <body name="table4" pos="1.0 0 -0.1">
+            <geom type="box" name="table4" size="0.6 1 0.1" rgba="0.02 0.1 0.05 1"/>
         </body>
         <body name="robot" pos="0.02 0.0 0.055">
             <geom type="box" name="top_finger" pos="0 0.06 0" euler="0 0 45" size="0.1 0.01 0.05" rgba="0.8 0.5 0.5 1"/>

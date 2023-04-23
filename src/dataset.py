@@ -1,5 +1,6 @@
 import pickle
 from pathlib import Path
+from typing import Optional, List, Dict
 
 import numpy as np
 import torch
@@ -17,6 +18,7 @@ def get_context(trajectory):
         context_action_t = context_transition_t['action']
         context_robot_pos_t = context_before_t['robot_pos']
         context_object_pos_t = context_before_t['object_pos']
+
         context.append(np.concatenate([context_robot_pos_t, context_object_pos_t, context_action_t]))
     context = torch.flatten(torch.tensor(np.array(context)))
     return context
@@ -48,29 +50,35 @@ def get_targets(trajectory):
 
 
 class DynamicsDataset(Dataset):
-    def __init__(self, dataset_name: str, version: str = 'latest'):
+    def __init__(self,
+                 dataset_name: str,
+                 version: str = 'latest',
+                 trajectories: Optional[List[List[Dict]]] = None):
         self.name = dataset_name
-        self.artifact = wandb.Api().artifact(f'armlab/pushing_focus/{dataset_name}:{version}', type='dataset')
-        self.dataset_file = Path(self.artifact.download()) / 'dataset.pkl'
-        with self.dataset_file.open('rb') as f:
-            self.dataset = pickle.load(f)
+        if trajectories is not None:
+            self.trajectories = trajectories
+        else:
+            self.artifact = wandb.Api().artifact(f'armlab/pushing_focus/{dataset_name}:{version}', type='dataset')
+            self.dataset_file = Path(self.artifact.download()) / 'dataset.pkl'
+            with self.dataset_file.open('rb') as f:
+                self.trajectories = pickle.load(f)
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.trajectories)
 
     def __getitem__(self, idx):
         """
         Returns a tuple of (context, actions, target_obj_positions, uuid).
-        context: (H*8) flattened
+        context: (H*9) flattened
             Robot position, and object position, and action for H time steps before prediction starts.
-        actions: (T*2) flattened
+        actions: (T*3) flattened
             Action for T time steps after prediction starts.
         target_obj_positions: (T*3) flattened
             Object position for T time steps after prediction starts.
         uuid: string
             Unique identifier for the trajectory.
         """
-        trajectory = self.dataset[idx]
+        trajectory = self.trajectories[idx]
 
         context = get_context(trajectory)
         actions = get_actions(trajectory)
@@ -78,6 +86,71 @@ class DynamicsDataset(Dataset):
 
         uuid = trajectory[0]['uuid']
         return context.float(), actions.float(), target_obj_positions.float(), target_robot_positions.float(), uuid
+
+
+class MDEDataset(Dataset):
+    def __init__(self, dataset_name: str, trajectories: Optional[List[List[Dict]]] = None):
+        self.name = dataset_name
+        self.trajectories = trajectories
+
+    def __len__(self):
+        return len(self.trajectories)
+
+    def __getitem__(self, idx):
+        """
+        Takes in trajectories of length 10 and just ignores the last 7.
+
+        Returns a tuple of (context, actions, deviations, uuid).
+        context: (H*9) flattened
+            Robot position, and object position, and action for H time steps before prediction starts.
+        actions: (8*3)
+            next action
+        target_deviation: (8)
+            Object position for the next time step
+        uuid: string
+            Unique identifier for the trajectory.
+        """
+        trajectory = self.trajectories[idx]
+
+        context = get_context(trajectory)
+        actions = get_actions(trajectory)
+        target_deviations = torch.tensor([t['deviation'] for t in trajectory[H-1:]], dtype=torch.float)
+        uuid = trajectory[0]['uuid']
+        return context.float(), actions.float(), target_deviations, uuid
+
+    def viz_dataset(self):
+        """
+        Plot the x/y positions of the final object position,
+        with the final deviation as the color of the point.
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib import cm
+        final_deviations = []
+        all_deviations = []
+        for traj in self.trajectories:
+            final_deviations.append(traj[-1]['deviation'])
+            for transition in traj[2:]:
+                all_deviations.append(transition['deviation'])
+        final_deviations = np.array(final_deviations)
+        colors = cm.jet(final_deviations * 3)
+        xs = [t[-1]['before']['object_pos'][0] for t in self.trajectories]
+        ys = [t[-1]['before']['object_pos'][1] for t in self.trajectories]
+        plt.figure()
+        plt.scatter(xs, ys, c=colors)
+        plt.axis("equal")
+        plt.xlim(0, 0.75)
+        plt.ylim(-0.5, 0.5)
+        plt.title("final deviations")
+        plt.xlabel("final objet x")
+        plt.ylabel("final objet y")
+
+        plt.figure()
+        plt.hist(all_deviations)
+        plt.xlabel("deviation")
+        plt.ylabel("count")
+        plt.title("all deviations")
+        plt.show()
+
 
 
 def save(dataset, env_name, seed):

@@ -1,13 +1,12 @@
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import numpy as np
 import rerun as rr
 import torch
-import wandb
 
 import rrr
+from collect_data import append_transition
 from dataset import get_context
 from env import Env
 from model import DynamicsNetwork
@@ -36,16 +35,12 @@ def goal_satisfied(state, goal, threshold=0.1):
 
 class MPPIRunner:
 
-    def __init__(self, horizon):
+    def __init__(self, xml_model_filename: str, horizon: int, dynamics: DynamicsNetwork):
+        self.xml_model_filename = xml_model_filename
+        self.env = Env(xml_model_filename)
         self.horizon = horizon
-        self.env = Env('source.xml')
-
-        # get the source dynamics model
-        api = wandb.Api()
-        artifact = api.artifact('armlab/pushing_focus/source_model:latest')
-        model_path = Path(artifact.download())
-        self.nn = DynamicsNetwork.load_from_checkpoint(model_path / 'model.ckpt')
-        self.nn.eval()
+        self.dynamics = dynamics
+        self.mde = None
 
         self.pool = ThreadPoolExecutor(multiprocessing.cpu_count() - 1)
 
@@ -66,18 +61,24 @@ class MPPIRunner:
         self.rr_time_offset += self.env.data.time
 
         # re-initialize the target simulation environment
-        self.env = Env('source.xml')
+        self.env = Env(self.xml_model_filename)
 
     def run(self, goal):
+        trajectory = []
+        self.reload_env()
+
         rr.set_time_sequence('planning', self.global_planning_step)
         rr.log_point('goal', goal, color=(255, 0, 255), radius=self.goal_threshold)
 
         # build up context
         action = np.array([0, 0, 0])
+        before = self.env.get_state()
         for _ in range(3):
-            state = self.env.get_state()
-            self.context_buffer.append({'before': state, 'action': action})
             self.env.step(action)
+            after = self.env.get_state()
+            append_transition(after, before, action, trajectory)
+            append_transition(after, before, action, self.context_buffer)
+            before = after
 
         # warmstart mppi
         for _ in range(5):
@@ -85,27 +86,37 @@ class MPPIRunner:
             action = self.mppi.command(self.dynamics_and_cost_func, goal=goal)
 
         for t in range(50):
-            state = self.env.get_state()
-            self.context_buffer.append({'before': state, 'action': action})
+            after = self.env.get_state()
+            append_transition(after, before, action, trajectory)
+            append_transition(after, before, action, self.context_buffer)
 
             rr.log_arrow('action/xy',
-                         state['robot_pos'],
+                         before['robot_pos'],
                          np.array([action[0], action[1], 0]),
                          color=(255, 0, 255),
                          width_scale=0.01)
-            rrr.log_rotational_velocity('action/z', state['robot_pos'], action[2], color=(255, 0, 255),
+            rrr.log_rotational_velocity('action/z', before['robot_pos'], action[2], color=(255, 0, 255),
                                         stroke_width=0.01)
 
             self.env.step(action, time_offset=self.rr_time_offset)
 
-            if goal_satisfied(state, goal, self.goal_threshold):
+            if goal_satisfied(before, goal, self.goal_threshold):
                 print(f'Goal reached in {t} steps')
-                break
+                return True, trajectory
+
+            if before['object_pos'][2] < 0.025:
+                print('Object fell')
+                return False, trajectory
 
             self.mppi.roll()
             for t in range(1):
                 self.global_planning_step += 1
                 action = self.mppi.command(self.dynamics_and_cost_func, goal=goal)
+
+            before = after
+
+        print('Goal not reached')
+        return False, trajectory
 
     def cost(self, object_sequences, goal):
         """
@@ -171,7 +182,17 @@ class LearnedMPPIRunner(MPPIRunner):
         context = get_context(self.context_buffer).float()
         context = torch.tile(context, [num_samples, 1])
         perturbed_action_flat = torch.tensor(perturbed_action).float().reshape(num_samples, -1)
-        outputs = self.nn(context, perturbed_action_flat)  # [num_samples, 8, 3] flattened to [num_samples, 24]
+        outputs = self.dynamics(context, perturbed_action_flat)  # [num_samples, 8, 3] flattened to [num_samples, 24]
         object_sequences = outputs.reshape(num_samples, 8, 3).cpu().detach().numpy()
         costs = self.cost(object_sequences, goal)
-        return costs
+        if self.mde is not None:
+            mde_costs = self.mde_costs(context, perturbed_action_flat)
+        else:
+            mde_costs = 0
+
+        return costs + mde_costs
+
+    def mde_costs(self, context, actions):
+        deviations = self.mde(context, actions)
+        deviations = deviations.detach().numpy()
+        return deviations
