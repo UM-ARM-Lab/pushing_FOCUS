@@ -8,7 +8,7 @@ import rerun as rr
 import rrr
 from rollout import N_SUB_STEPS
 
-SIM_STEPS_PER_VIZ = 25
+SIM_STEPS_PER_VIZ = 50
 
 
 def nonempty_name(name):

@@ -30,7 +30,7 @@ def main():
     wandb.config.update({
         'is_adapt': False,
     })
-    trainer = pl.Trainer(max_epochs=100, logger=wandb_logger, check_val_every_n_epoch=5, log_every_n_steps=2)
+    trainer = pl.Trainer(max_epochs=100, logger=wandb_logger, check_val_every_n_epoch=5, log_every_n_steps=5)
     trainer.fit(model, train_loader, val_loader)
 
 

@@ -1,18 +1,22 @@
+import logging
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
+from typing import Dict
 
 import numpy as np
 import rerun as rr
 import torch
+from colorama import Fore
 
 import rrr
 from collect_data import append_transition
-from dataset import get_context, P
+from dataset import get_context, P, T
 from env import Env
 from model import DynamicsNetwork
 from mppi import MPPI, normalized
 from rollout import parallel_rollout
 
+logger = logging.getLogger(__name__)
 
 def goal_satisfied(state, goal, threshold=0.1):
     """
@@ -31,6 +35,17 @@ def goal_satisfied(state, goal, threshold=0.1):
                            state['object_pos'][2]])
     distance = np.linalg.norm(object_pos - goal)
     return distance < threshold
+
+
+def goal_cost(object_sequences, goal):
+    """
+    Compute the cost of the object sequences.
+
+    Args:
+        object_sequences: [num_samples, P, 3]
+    """
+    goal_cost = np.linalg.norm(object_sequences - goal, axis=-1)
+    return goal_cost
 
 
 class MPPIRunner:
@@ -84,7 +99,7 @@ class MPPIRunner:
             self.global_planning_step += 1
             action = self.mppi.command(self.dynamics_and_cost_func, goal=goal)
 
-        for t in range(50):
+        for t in range(100):
             after = self.env.get_state()
             append_transition(after, before, action, trajectory)
             append_transition(after, before, action, self.context_buffer)
@@ -100,11 +115,11 @@ class MPPIRunner:
             self.env.step(action, time_offset=self.rr_time_offset)
 
             if goal_satisfied(before, goal, self.goal_threshold):
-                print(f'Goal reached in {t} steps')
+                logger.info(Fore.GREEN + f'Goal reached in {t} steps' + Fore.RESET)
                 return True, trajectory
 
-            if before['object_pos'][2] < 0.0:
-                print('Object fell')
+            if np.linalg.norm(before['object_pos'] - before['robot_pos']) > 0.2 and len(trajectory) >= T:
+                logger.warning('Object too far away')
                 return False, trajectory
 
             self.mppi.roll()
@@ -114,35 +129,33 @@ class MPPIRunner:
 
             before = after
 
-        print('Goal not reached')
+        logger.warning('Goal not reached')
         return False, trajectory
 
-    def cost(self, object_sequences, goal):
-        """
-        Compute the cost of the object sequences.
+    def viz_costs(self, object_sequences, costs_dict: Dict):
+        names = list(costs_dict.keys())
+        costs = np.array(list(costs_dict.values()))
+        combined_cost = np.sum(np.sum(costs, 0), axis=-1)
+        combined_cost = normalized(combined_cost)
 
-        Args:
-            object_sequences: [num_samples, P, 3]
-        """
-        goal_cost = np.linalg.norm(object_sequences - goal, axis=-1)
-
-        cost_viz = np.sum(goal_cost, axis=-1)
-        cost_viz = normalized(cost_viz)
-
-        for i in np.argsort(cost_viz):
+        for i in np.argsort(-combined_cost):
             object_sequence = object_sequences[i]
-            c = cost_viz[i]
+            c = combined_cost[i]
             rr.set_time_sequence('planning', self.global_planning_step)
             self.global_planning_step += 1
 
             obj_color = tuple((np.array([255, 0, 0]) * (1 - c)).astype(np.int32))
-            robot_color = tuple((np.array([0, 255, 0]) * (1 - c)).astype(np.int32))
-            rr.log_line_strip(f'object/pred', object_sequence, color=obj_color, stroke_width=0.002)
-            # rr.log_line_strip(f'robot/pred', robot_sequence, color=robot_color, stroke_width=0.002)
-        return goal_cost
+            costs_dict_i = {n: np.sum(costs_dict[n][i] * self.mppi.gammas) for n in names}
+            rr.log_line_strip(f'object/pred', object_sequence, color=obj_color, stroke_width=0.003, ext=costs_dict_i)
 
     def dynamics_and_cost_func(self, perturbed_action, goal):
         raise NotImplementedError
+
+
+def cost_from_results(results, goal):
+    object_sequences, robot_sequences = results
+    object_sequences = object_sequences[:, 1:]
+    return goal_cost(object_sequences, goal)
 
 
 class MujocoMPPIRunner(MPPIRunner):
@@ -151,18 +164,17 @@ class MujocoMPPIRunner(MPPIRunner):
         state = self.env.get_state(data=data)
         return state['object_pos'], state['robot_pos']
 
-    def cost_from_results(self, results, goal):
-        object_sequences, robot_sequences = results
-        object_sequences = object_sequences[:, 1:]
-        return self.cost(object_sequences, goal)
-
     def dynamics_and_cost_func(self, perturbed_action, goal):
         results = parallel_rollout(self.pool, self.env.model, self.env.data, perturbed_action, self.get_results)
-        costs = self.cost_from_results(results, goal)
+        costs = cost_from_results(results, goal)
         return costs
 
 
 class LearnedMPPIRunner(MPPIRunner):
+
+    def __init__(self, xml_model_filename: str, dynamics: DynamicsNetwork):
+        super().__init__(xml_model_filename, dynamics)
+        self.mde_cost_scale = 20
 
     def dynamics_and_cost_func(self, perturbed_action, goal):
         """
@@ -181,16 +193,19 @@ class LearnedMPPIRunner(MPPIRunner):
         context = get_context(self.context_buffer).float()
         context = torch.tile(context, [num_samples, 1])
         perturbed_action_flat = torch.tensor(perturbed_action).float().reshape(num_samples, -1)
-        predictions = self.dynamics(context, perturbed_action_flat)  # [num_samples, P, 3] flattened to [num_samples, 24]
+        predictions = self.dynamics(context, perturbed_action_flat)  # [num_samples, P*3]
         object_sequences = predictions.reshape(num_samples, P, 3).cpu().detach().numpy()
-        costs = self.cost(object_sequences, goal)
+        goal_costs = goal_cost(object_sequences, goal)
+
         if self.mde is not None:
             mde_costs = self.mde_costs(context, perturbed_action_flat, predictions)
-            binary_mde_costs = np.maximum(mde_costs - 0.02, 0)
+            binary_mde_costs = np.maximum(mde_costs - 0.03, 0) * self.mde_cost_scale
         else:
-            binary_mde_costs = 0
+            binary_mde_costs = np.zeros_like(goal_costs)
 
-        return costs + binary_mde_costs * 100
+        self.viz_costs(object_sequences, {'goal': goal_costs, 'mde': binary_mde_costs})
+        costs = goal_costs + binary_mde_costs
+        return costs
 
     def mde_costs(self, context, actions, predictions):
         deviations = self.mde(context, actions, predictions)

@@ -6,15 +6,9 @@ import wandb
 from tqdm import tqdm
 
 import rrr
-from dataset import save
+from dataset import save, T, T_STEP, H
 from env import Env
 from rrr import viz_state
-
-# Context size
-H = 3
-# Total trajectory length
-T = 20
-T_STEP = 1
 
 
 def collect_data(nominal_generator: Callable, env_name: str, model_xml_filename: str, n_trajs: int, seed: int):
@@ -63,7 +57,7 @@ def collect_data(nominal_generator: Callable, env_name: str, model_xml_filename:
 
             before = after
 
-        for _ in range(12):
+        for _ in range(T + 2):
             action = nominal_vel + rng.normal([0, 0, 0], [0.005, 0.005, 0.05])
 
             env.step(action)

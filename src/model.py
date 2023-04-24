@@ -10,8 +10,7 @@ import wandb
 from torch import nn
 from torch.optim import Adam
 
-from collect_data import H
-from dataset import P
+from dataset import P, H
 
 
 class DynamicsNetwork(pl.LightningModule):
@@ -96,6 +95,8 @@ class DynamicsNetwork(pl.LightningModule):
                     log_dict["weights"] = weight.detach().cpu().numpy().mean(-1)
                 case 'all_data':
                     weight = torch.ones_like(error)
+                case 'all_data_no_mde':
+                    weight = torch.ones_like(error)
                 case _:
                     raise NotImplementedError(f"Unknown {self.method=}")
         return weight
@@ -109,7 +110,7 @@ class DynamicsNetwork(pl.LightningModule):
         train_log_dict = {f"train_{k}": v for k, v in log_dict.items()}
         train_log_dict["global_step"] = self.global_step
 
-        if self.global_step % 5 == 0:
+        if self.global_step % 10 == 0:
             wandb.log(train_log_dict)
 
         return log_dict['loss']
@@ -126,7 +127,7 @@ class DynamicsNetwork(pl.LightningModule):
         val_log_dict = {f"{val_dataset_name}_{k}": v for k, v in log_dict.items()}
         val_log_dict["global_step"] = self.global_step
 
-        if self.global_step % 5 == 0:
+        if self.global_step % 10 == 0:
             wandb.log(val_log_dict)
 
         return log_dict['loss']

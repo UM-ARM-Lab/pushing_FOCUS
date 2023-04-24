@@ -1,12 +1,13 @@
-import concurrent
 import copy
-import multiprocessing
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 import mujoco
 import numpy as np
 
 N_SUB_STEPS = 125
+
+logger = logging.getLogger(__name__)
 
 
 def rollout(model, data, controls, get_result_func=None):
@@ -58,7 +59,7 @@ def control_step(model, data, qvel_target):
     if qvel_target is not None:
         np.copyto(data.ctrl, qvel_target)
     else:
-        print("control is None!!!")
+        logger.warning("control is None!!!")
     mujoco.mj_step(model, data, nstep=N_SUB_STEPS)
 
 

@@ -8,8 +8,9 @@ import wandb
 from matplotlib import pyplot as plt, cm
 from torch.utils.data import Dataset
 
-from collect_data import T
-
+# Total trajectory length
+T = 20
+# context length
 H = 3
 # the prediction horizon
 P = T - H + 1
@@ -194,3 +195,6 @@ def save(dataset, env_name, seed):
     artifact = wandb.Artifact(f'{env_name}-dataset', type='dataset')
     artifact.add_file('dataset.pkl')
     run.log_artifact(artifact)
+
+
+T_STEP = 1
