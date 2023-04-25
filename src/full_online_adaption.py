@@ -1,7 +1,9 @@
+#!/usr/bin/env python
 """
 The main file demonstrating the full online-learning method proposed in the following paper:
 https://arxiv.org/abs/2209.14261
 """
+import argparse
 import logging
 from copy import deepcopy
 from pathlib import Path
@@ -155,13 +157,16 @@ class FOCUS:
 
 
 def main():
-    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
-    seed = 2
-    torch.manual_seed(seed)
-    np.set_printoptions(precision=4, suppress=True)
-    torch.set_printoptions(precision=4, sci_mode=False)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--seed', type=int, default=2)
+    parser.add_argument('--method', type=str, default='FOCUS')
 
-    f = FOCUS(seed, method='FOCUS')
+    args = parser.parse_args()
+
+    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
+    torch.manual_seed(args.seed)
+
+    f = FOCUS(args.seed, args.method)
     f.run()
     f.eval()
 

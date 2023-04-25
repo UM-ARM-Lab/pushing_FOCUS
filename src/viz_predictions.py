@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This script trains a simple 2-layer MLP on the source dynamics dataset
 """

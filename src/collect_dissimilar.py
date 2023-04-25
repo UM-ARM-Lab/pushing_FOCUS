@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from collect_data import collect_data
 
 
