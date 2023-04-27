@@ -26,7 +26,7 @@ More details about FOCUS can be found on our [Project Website](https://sites.goo
 1. Set up a virtual environment with python 3.10 and install the dependencies.
 
 ```bash
-python3 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
