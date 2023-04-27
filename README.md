@@ -23,7 +23,7 @@ More details about FOCUS can be found on our [Project Website](https://sites.goo
 
 1. Clone this repository.
 
-1. Set up a virtual environment with python 3.10 and install the dependencies.
+1. Set up a virtual environment with python 3.10 and install the dependencies. On Ubuntu 20.04 you will have to install python3.10-venv from the `deadsnakes` PPA.
 
 ```bash
 python3.10 -m venv venv
